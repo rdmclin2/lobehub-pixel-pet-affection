@@ -30,6 +30,7 @@ const { execFileSync } = require('node:child_process');
 
 module.exports = function musicChatScenario(ctx) {
   const { ROOT, OUT, FAKE_LH, step, launch, openAdminWindow, hover, clickAct } = ctx;
+  const { clickChatBubble } = require('./pet-panel');
   return async function musicChat() {
     const S = 'music';
     const SHOTS = path.join(OUT, 'music');
@@ -80,7 +81,7 @@ module.exports = function musicChatScenario(ctx) {
     const songs = () => (fs.existsSync(musicDir) ? fs.readdirSync(musicDir).filter((f) => !f.endsWith('.part')) : []);
     const sendText = async (text) => {
       await hover(page);
-      await require('./pet-panel').openChatBar(page); // T-6162: no 聊天 tile, her own chat bar opens beside her
+      if (!(await page.isVisible('#chat-input'))) await clickChatBubble(page);
       await page.fill('#chat-input', text);
       await page.click('#chat-send');
     };

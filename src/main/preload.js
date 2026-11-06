@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('pet', {
   previewPetScale: (scale) => ipcRenderer.invoke('preview-pet-scale', { scale }),
   setPetScale: (scale) => ipcRenderer.invoke('set-pet-scale', { scale }),
   panel: (open) => ipcRenderer.send('panel', !!open),
+  // the chat box under her feet: the room it needs in her window (T-6162), and how tall she is when her size changes
+  composerSpace: (extra) => ipcRenderer.invoke('composer-space', { extra }),
+  onComposerBase: on('composer-base'),
   chat: (text, images, files, opts = {}) => ipcRenderer.invoke('chat', { text, images, files, sticker: opts.sticker }),
   // 表情包 (docs/stickers-design.md §3.1): the companion's sets for the chat box panel
   stickers: { list: () => ipcRenderer.invoke('pet-stickers-list') },
@@ -144,8 +147,6 @@ contextBridge.exposeInMainWorld('pet', {
     toggle: (p) => ipcRenderer.invoke('pet-panel:toggle', p),
     close: (reason) => ipcRenderer.send('pet-panel:close', { reason }),
     update: (payload) => ipcRenderer.send('pet-panel:update', payload),
-    restore: (text) => ipcRenderer.send('pet-panel:restore', { text }), // a panel message she did not send goes back (T-6162)
-    mic: (m) => ipcRenderer.send('pet-panel:mic', m), // the panel's 🎤: how the recording goes, then the recognised text
     onAct: on('panel-act'),
     onClosed: on('panel-closed'),
   },

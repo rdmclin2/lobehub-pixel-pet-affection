@@ -44,6 +44,7 @@ const IVoice = require('../core/interaction-voice');
 const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { PetPanel } = require('./pet-panel');
+const { composerBounds } = require('../core/composer-space');
 const { GameWindow } = require('./game-window');
 const { GameLibrary, GameIndex } = require('./games');
 const GameIndexLib = require('../core/game-index');
@@ -116,19 +117,39 @@ function fitScale(k, bounds) {
 }
 
 // Resize the pet window to scale `k`, keeping its bottom-right corner where it is. Returns the scale used.
+// An open chat box keeps its room under her, and her window hears how tall she is now (composer-base).
 function resizePet(k) {
   const fit = (b) => {
     const wa = screen.getDisplayMatching(b).workArea;
     const { w, h } = petDims(k);
-    return { x: Math.max(wa.x, b.x + b.width - w), y: Math.max(wa.y, b.y + b.height - h), width: w, height: h };
+    const height = h + composer.extra;
+    return { x: Math.max(wa.x, b.x + b.width - w), y: Math.max(wa.y, b.y + b.height - height), width: w, height };
   };
   k = fitScale(k, petBounds || undefined);
   if (petBounds) petBounds = fit(petBounds); // a panel is open: applied when it closes
-  else if (win) win.setBounds(fit(win.getBounds()));
+  else if (win) {
+    win.setBounds(fit(win.getBounds()));
+    composer.y = win.getBounds().y;
+    if (composer.extra) win.webContents.send('composer-base', petDims(k).h);
+  }
   return k;
 }
 
+// The chat box under her feet (core/composer-space.js): the room it takes in her window right now. `y` says
+// where that left the window: if it is somewhere else later she was moved, and the window stays where she was put.
+const composer = { extra: 0, lift: 0, y: null };
+function setComposerSpace(extra) {
+  const b = win.getBounds();
+  const base = b.height - composer.extra;
+  const lift = composer.y === b.y ? composer.lift : 0;
+  const next = composerBounds({ bounds: b, prevExtra: composer.extra, extra, lift, area: screen.getDisplayMatching(b).workArea });
+  win.setBounds({ x: next.x, y: next.y, width: next.width, height: next.height });
+  Object.assign(composer, { extra, lift: next.lift, y: next.y });
+  return { base, lift: next.lift, bounds: win.getBounds() };
+}
+
 function place(mode) {
+  Object.assign(composer, { extra: 0, lift: 0, y: null }); // every screen starts from its own size
   const wa = screen.getPrimaryDisplay().workArea;
   const { w, h: want } = mode === 'pet' ? petDims(fitScale(petScale(service ? service.settings : null))) : SIZES[mode];
   const h = mode === 'perms' ? Math.min(want, wa.height - 48) : want; // a short screen: the page scrolls instead
@@ -1214,6 +1235,11 @@ function wire() {
       petBounds = null;
     }
   });
+  ipcMain.handle('composer-space', (e, { extra } = {}) => {
+    const px = Math.round(Number(extra));
+    if (!win || windowOf(e) !== win || !Number.isFinite(px) || px < 0 || px > 480) return null;
+    return setComposerSpace(px);
+  });
   ipcMain.on('quit', () => app.quit());
   // 她的面板: the pet window opens / closes it and keeps it up to date; the panel presses buttons and sizes itself
   const fromPet = (e) => windowOf(e) === win && !!petPanel;
@@ -1221,11 +1247,7 @@ function wire() {
   ipcMain.handle('pet-panel:toggle', (e, p = {}) => (fromPet(e) ? petPanel.toggle(p) : { ok: false, visible: false }));
   ipcMain.on('pet-panel:close', (e, { reason } = {}) => { if (fromPet(e)) petPanel.close(String(reason || 'pet')); });
   ipcMain.on('pet-panel:update', (e, payload) => { if (fromPet(e)) petPanel.update(payload); });
-  ipcMain.on('pet-panel:restore', (e, m) => { if (fromPet(e)) petPanel.restore(m); });
-  ipcMain.on('pet-panel:mic', (e, m) => { if (fromPet(e)) petPanel.mic(m); });
   ipcMain.on('pet-panel:act', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.act(m); });
-  ipcMain.on('pet-panel:chat', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.chat(m); });
-  ipcMain.on('pet-panel:draft', (e, m) => { if (petPanel && petPanel.isSender(e)) petPanel.draft(m); });
   ipcMain.on('pet-panel:size', (e, s) => { if (petPanel && petPanel.isSender(e)) petPanel.resize(s); });
   ipcMain.on('pet-panel:close-self', (e, { reason } = {}) => { if (petPanel && petPanel.isSender(e)) petPanel.close(String(reason || 'esc')); });
   // 配置后台: the pet window's ⚙ / right click / unlock toast open it (at a section); single instance
@@ -1614,14 +1636,12 @@ app.whenReady().then(() => {
     },
   });
   wire();
-  // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there, so her
-  // window gets the keyboard, as for 📎 (her chat bar opens there). Its 🎤 records in her window too, but the panel
-  // keeps the focus (it stays open and gets the text). What is typed in its chat box goes there too (act chat /
-  // draft) and is sent from there.
+  // 她的面板: a button pressed in it is done by her window (app.js runAct); ♪ opens the dance menu there and 聊天
+  // the chat box, so her window gets the keyboard
   petPanel = new PetPanel({
     onAct: (m) => {
       if (m.act === 'scene') { openScene('panel').catch(logError); return; } // ⌂ 小游戏: main opens it, her window hides
-      if (['dance', 'attach'].includes(m.act) && win && !win.isDestroyed()) win.focus();
+      if ((m.act === 'dance' || m.act === 'chat') && win && !win.isDestroyed()) win.focus();
       send('panel-act', m);
     },
     onClosed: (m) => send('panel-closed', m),

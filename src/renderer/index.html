@@ -140,24 +140,30 @@
     <div id="dance-menu" class="popup dance-menu hidden" role="menu" aria-label="跳舞"></div>
     <!-- the owner's 表情包 from the chat box, risen over it for a moment (outside #hud: it shows while she is busy) -->
     <img id="sent-sticker" class="sent-sticker hidden" alt="" draggable="false" />
-    <!-- everything below is only shown while the pointer is over the window: the chat box for what reaches her window
-         itself — a picture pasted or a file dragged onto her, the voice hotkey / 🎤. Typing to her is in her panel
-         (its own small window beside her, src/renderer/panel/; T-6162), along with her state and the buttons. -->
-    <div id="hud" class="hud">
+    <!-- 对话气泡 (T-6162): beside her while the pointer is over her; opens and closes the chat box under her feet -->
+    <button id="chat-open" class="chat-open" title="和她聊天" aria-label="和她聊天" aria-expanded="false" aria-controls="chat-row"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></button>
+    <!-- the chat box: under her feet, in room her window makes for it (composerSpace), so it never covers her. It stays
+         until closed (✕, Esc, the bubble again). Two modes (chat-mode): typing, or 按住说话 — let go and it goes to her. -->
+    <div id="chat-row" class="chat-row hidden" role="group" aria-label="和她聊天" data-mode="text">
       <div id="attach-row" class="attach-row hidden"></div>
       <!-- 表情包 (docs/stickers-design.md §3.1): her sets, opened from ☺ in the chat box; one click sends one -->
       <div id="sticker-pop" class="popup sticker-pop hidden" role="dialog" aria-label="表情包">
         <div id="sticker-tabs" class="sticker-tabs" role="tablist"></div>
         <div id="sticker-grid" class="sticker-grid" role="grid"></div>
       </div>
-      <div id="chat-row" class="row chat-row hidden">
-        <button id="attach-btn" class="btn attach-btn" title="添加图片（也可以 Ctrl/⌘+V 粘贴，或把任何文件拖进来）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
-        <button id="sticker-btn" class="btn attach-btn" title="表情包" aria-label="表情包" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></button>
-        <input id="chat-input" maxlength="400" placeholder="说点什么，可粘贴图片、拖入文件…" autocomplete="off" />
-        <button id="chat-mic" class="btn mic-btn hidden" data-state="idle" title="语音输入：点一下开始、再点一下结束；也可以按住说话，松开结束" aria-label="语音输入" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
-        <button id="chat-send" class="btn primary">发送</button>
-      </div>
       <div id="mic-status" class="mic-status hidden" role="status" aria-live="polite"></div>
+      <div class="chat-box">
+        <button id="chat-close" class="chat-close icon-btn" title="收起（Esc）" aria-label="收起聊天框"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <textarea id="chat-input" rows="2" maxlength="2000" placeholder="说点什么，可粘贴图片、拖入文件…" autocomplete="off" title="Enter 发送，Shift+Enter 换行"></textarea>
+        <button id="voice-hold" class="btn voice-hold hidden" data-state="idle">按住说话</button>
+        <div class="chat-bar">
+          <button id="chat-mode" class="btn chat-tool" data-state="text" aria-pressed="false"></button>
+          <button id="attach-btn" class="btn attach-btn chat-tool" title="添加图片（也可以 Ctrl/⌘+V 粘贴，或把任何文件拖进来）" aria-label="添加图片或文件"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/></svg></button>
+          <button id="sticker-btn" class="btn attach-btn chat-tool" title="表情包" aria-label="表情包" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></button>
+          <span id="chat-hint" class="chat-hint">Shift+Enter 换行</span>
+          <button id="chat-send" class="btn primary" disabled>发送</button>
+        </div>
+      </div>
     </div>
 
     <!-- a visiting model-chan (index.html?visitor=<id>): her name and a button to send her home -->

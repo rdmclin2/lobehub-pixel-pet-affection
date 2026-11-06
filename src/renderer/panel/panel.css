@@ -4,9 +4,9 @@
 html, body { height: auto; }
 body { padding: 12px; overflow: hidden; }
 /* ---- 她的面板 (right click / long press on her): one card — who she is and how she is, then what to do ----
-   head (her name, her character, the stage tag) · affection meter · the three needs · three action tiles ·
-   the chat box (T-6162) · a footer of quiet icon buttons (静音 / 跳舞 / 重置 … ⚙ 设置 / ⏻ 退出).
-   The LobeHub popover: elevated surface, radius lg, the secondary shadow; sections split by hairlines; tiles and icon buttons as quiet hover fills. */
+   head (her name, her character, the stage tag) · affection meter · the three needs · four action tiles ·
+   a footer of quiet icon buttons (静音 / 跳舞 / 重置 … ⚙ 设置 / ⏻ 退出). The LobeHub popover: elevated surface,
+   radius lg, the secondary shadow; sections split by hairlines; tiles and icon buttons as quiet hover fills. */
 .pet-panel { width: 240px; transform-origin: 50% 100%; display: flex; flex-direction: column; background: var(--pet-surface); border: 1px solid var(--pet-line-soft); border-radius: var(--lobe-border-radius-lg); box-shadow: var(--lobe-box-shadow-secondary); font-size: 12px; animation: panel-in var(--lobe-motion-duration-mid) var(--pet-ease); }
 .pet-panel:focus { outline: none; }
 @keyframes panel-in { from { opacity: 0; transform: translateY(6px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -34,7 +34,7 @@ body { padding: 12px; overflow: hidden; }
 .need-val { font-size: 11px; line-height: 16px; font-weight: 500; color: var(--lobe-color-text); font-variant-numeric: tabular-nums; }
 .need-bar { grid-column: 1 / -1; display: block; height: 4px; background: var(--lobe-color-fill-secondary); border-radius: 2px; position: relative; overflow: hidden; }
 .need-bar::after { content: ""; position: absolute; inset: 0; background: var(--c, var(--lobe-color-success)); border-radius: 2px; transform: scaleX(var(--k, 0)); transform-origin: 0 50%; transition: transform var(--lobe-motion-duration-slow) var(--pet-ease); }
-/* what to do: three tiles (icon over label), the chat box, then the footer */
+/* what to do: four tiles (icon over label), then the footer */
 .pp-actions { display: flex; flex-direction: column; border-top: 1px solid var(--pet-line-soft); padding: var(--pet-space-xs); }
 .pp-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--pet-space-xxs); }
 .pp-tile { font: inherit; font-size: 12px; line-height: 16px; color: var(--lobe-color-text); display: flex; flex-direction: column; align-items: center; gap: var(--pet-space-xxs); padding: var(--pet-space-sm) 0 var(--pet-space-xs); border: none; border-radius: var(--lobe-border-radius); background: transparent; cursor: pointer; transition: background-color var(--lobe-motion-duration-mid) var(--pet-ease), color var(--lobe-motion-duration-mid) var(--pet-ease); }
@@ -58,24 +58,3 @@ body { padding: 12px; overflow: hidden; }
 .pp-foods .btn { font-size: 12px; font-weight: 400; min-height: 24px; padding: 0 var(--pet-space-sm); border-color: transparent; background: transparent; }
 .pp-foods .btn:hover:not(:disabled) { background: var(--lobe-color-fill-tertiary); border-color: transparent; }
 .pp-foods-title { width: 100%; font-size: 11px; line-height: 16px; color: var(--lobe-color-text-tertiary); padding: 0 var(--pet-space-xxs); }
-/* 和她聊天 (T-6162): a multi-line box in the card, LobeHub's chat input in small — one quiet frame around the text
-   and a bar under it (the key hint, 发送). The box grows with the text up to about six lines (panel.js), then
-   scrolls; the window grows with the card. */
-.pp-chat { display: flex; flex-direction: column; gap: var(--pet-space-xxs); margin: var(--pet-space-xs) var(--pet-space-xxs) 0; padding: var(--pet-space-xs); border: 1px solid var(--pet-line); border-radius: var(--lobe-border-radius); background: var(--lobe-color-bg-container); transition: border-color var(--lobe-motion-duration-mid) var(--pet-ease), box-shadow var(--lobe-motion-duration-mid) var(--pet-ease); }
-.pp-chat:hover { border-color: var(--lobe-color-fill); }
-.pp-chat:focus-within { border-color: var(--lobe-color-text-tertiary); box-shadow: 0 0 0 2px var(--lobe-color-fill-secondary); }
-.pp-chat-input { display: block; width: 100%; resize: none; overflow-y: hidden; font-size: 12px; line-height: 18px; min-height: 40px; padding: var(--pet-space-xxs) var(--pet-space-xs); border: none; border-radius: 0; background: transparent; box-shadow: none; }
-.pp-chat-input:hover, .pp-chat-input:focus { border: none; box-shadow: none; }
-.pp-chat-bar { display: flex; align-items: center; gap: var(--pet-space-xxs); }
-.pp-chat-hint { flex: 1; min-width: 0; padding-left: var(--pet-space-xxs); font-size: 11px; line-height: 16px; color: var(--lobe-color-text-quaternary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pp-chat-bar .pp-chat-tool { flex: none; min-width: 24px; min-height: 24px; padding: 2px; border-color: transparent; background: transparent; color: var(--lobe-color-text-tertiary); }
-.pp-chat-bar .pp-chat-tool .ico { width: 14px; height: 14px; }
-.pp-chat-bar .pp-chat-tool:hover:not(:disabled) { border-color: transparent; background: var(--lobe-color-fill-tertiary); color: var(--lobe-color-text); }
-.pp-chat-bar .pp-chat-tool.hidden { display: none; }
-/* its 🎤 (T-6162) records right here: red and pulsing while it listens (as her own 🎤), a spinner while it is recognised */
-.pp-chat-bar .pp-chat-mic[data-state="recording"], .pp-chat-bar .pp-chat-mic[data-state="recording"]:hover:not(:disabled) { min-width: 40px; padding: 2px var(--pet-space-xxs); font-size: 11px; font-variant-numeric: tabular-nums; background: var(--lobe-color-error); border-color: var(--lobe-color-error); color: var(--pet-on-solid); animation: mic-pulse 1s ease-in-out infinite; }
-.pp-chat-bar .pp-chat-mic[data-state="starting"], .pp-chat-bar .pp-chat-mic[data-state="stopping"], .pp-chat-bar .pp-chat-mic[data-state="transcribing"] { cursor: progress; }
-.pp-chat-bar .pp-chat-mic .spin { display: inline-block; width: 10px; height: 10px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: mic-spin .7s linear infinite; }
-.pp-chat-hint[data-mic="recording"] { color: var(--lobe-color-error); }
-.pp-chat-hint[data-mic="transcribing"], .pp-chat-hint[data-mic="note"] { color: var(--lobe-color-text-tertiary); }
-.pp-chat-send { flex: none; min-height: 24px; padding: 2px var(--pet-space-sm); font-size: 12px; }

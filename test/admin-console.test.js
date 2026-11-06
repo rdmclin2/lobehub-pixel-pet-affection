@@ -533,8 +533,7 @@ test('admin preload: a whitelist of settings / roster / admin-chat channels, eac
 test('the pet window: one ⚙ 设置 button opens the settings window; no ⋯ menu, 话题 or 衣柜 is left in it (T-2718)', () => {
   const html = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'app.js'), 'utf8');
-  // her panel (right click on her): the three interactions as tiles, its chat box (T-6162: no 聊天 tile), then
-  // 🔈 ♪ ↺ … ⚙ ⏻ in its footer
+  // her panel (right click on her): the four interactions as tiles, then 🔈 ♪ ↺ … ⚙ ⏻ in its footer
   const panelHtml = fs.readFileSync(path.join(ROOT, 'src', 'renderer', 'panel', 'panel.html'), 'utf8');
   const bar = panelHtml.match(/<div id="toolbar"[^>]*>([\s\S]*?)<script/)[1];
   assert.deepEqual([...bar.matchAll(/data-act="(\w+)"/g)].map((m) => m[1]), ['feed', 'play', 'sleep', 'mute', 'scene', 'dance', 'reset', 'settings', 'quit']); // 🔈 静音 (T-2733), ⌂ 小游戏, ♪ 跳舞 and ↺ 重置姿势 (VRM only, T-2801 / T-2830) on the left of the footer; ⚙ and ⏻ 退出 (T-2827) on its right

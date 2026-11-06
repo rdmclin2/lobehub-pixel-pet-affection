@@ -189,7 +189,7 @@ module.exports = function stickersScenario(ctx) {
         const c = await cards();
         const pick = c.find((x) => x.label === '比心');
         await page.evaluate(() => window.pet.openChat && window.pet.openChat()).catch(() => {});
-        await require('./pet-panel').openChatBar(page); // T-6162: typing is in her panel; her own chat bar (and ☺) opens beside her
+        await require('./pet-panel').clickChatBubble(page);
         await page.fill('#chat-input', `[梗图:${pick.id}]`);
         await page.click('#chat-send');
         await page.waitForFunction(() => { const s = document.getElementById('meme-sticker'); return s && !s.classList.contains('hidden') && s.src.startsWith('sticker://blob/') && s.complete && s.naturalWidth > 0; }, null, { timeout: 20000 });

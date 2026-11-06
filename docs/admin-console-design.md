@@ -117,7 +117,7 @@
 
 | key | 类型 | 默认值 | 取值范围 / 校验 | 当前编辑入口 · IPC | 生效 |
 | --- | --- | --- | --- | --- | --- |
-| `asr.enabled` | boolean | `false` | — | ⋯ → 高级设置 → 语音输入 → 开启语音输入 · `set-asr` | 即时（聊天框旁边出现 🎤）；关闭时 `asr.cancel()` |
+| `asr.enabled` | boolean | `false` | — | ⋯ → 高级设置 → 语音输入 → 开启语音输入 · `set-asr` | 即时（聊天框可以切到「按住说话」）；关闭时 `asr.cancel()` |
 | `asr.engine` | enum | `'lobehub'` | `lobehub` \| `local` \| `off`；旧的 `provider` 字段会被迁移过来 | 语音输入 → 引擎 · `set-asr` | 即时（重置熔断器） |
 | `asr.fallback` | boolean | `false` | 选的引擎失败时，改用另一个再试一次 | 语音输入 → 用不了时换另一个引擎 · `set-asr` | 即时 |
 | `asr.language` | string | `'auto'` | `^(auto\|[a-z]{2})$`；界面上只列 auto / zh / en / ja / ko / fr / de / es / ru | 语音输入 → 语言 · `set-asr` | 即时 |
@@ -713,7 +713,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 
 ### 12.3 菜单（原 ⋯ 菜单与工具栏 / 托盘 / 应用菜单）：27 项
 
-桌宠窗口只保留 喂食 / 玩耍 / 睡觉 / 聊天 + ⚙ 设置（T-2718）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
+桌宠窗口只保留 喂食 / 玩耍 / 睡觉、身边的对话气泡 + ⚙ 设置（T-2718、T-6162）；`menu:` / `toolbar:` 行是原 ⋯ 菜单和工具栏按钮现在在设置窗口里的位置。
 
 | 菜单项 | 后台对应 |
 | --- | --- |
@@ -745,7 +745,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
 | `app:偏好设置…` | 打开设置窗口（Ctrl/⌘ + ,） |
 | `app:退出` | 不需要：退出程序 |
 
-### 12.4 桌宠窗口通道（src/main/preload.js）：131 个
+### 12.4 桌宠窗口通道（src/main/preload.js）：130 个
 
 - 设置窗口有同一通道（55）：`whoami` `talk-topic` `confirm-age` `set-adult` `equip-outfit` `mark-seen` `history-list` `history-get` `unlock-all` `set-model` `refresh-models` `set-system-role` `set-framing` `import-pack` `remove-pack` `catalog-download` `catalog-cancel` `catalog-remove` `import-live2d` `import-vrm` `export-pack` `open-link` `set-live2d-height` `open-packs-folder` `perm-status` `perm-request` `perm-open-settings` `ai-folders-add` `ai-folders-set` `new-topic` `release` `switch-character` `set-vrm-posture` `vrm-library-info` `tts-clear-cache` `open-voicepacks-folder` `voicepacks-reload` `set-voice-pack` `voice-pack-state` `set-user-voice-pack` `asr-test` `interject-rules` `interject-delete-rule` `interject-set-rule` `interject-clear-decisions` `interject-decisions` `set-api` `api-status` `dances:list` `dance:play` `dance:stop` `dance:state` `open-log` `update-install` `update-check`
 - 设置窗口用别的通道做同一件事（11）：
@@ -760,7 +760,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `set-visitors` → `admin-set` visitors（同屏伙伴）
   - `place` → `admin-place-pet`（桌宠行为 → 位置 → 找回桌宠）
   - `open-admin` → 这就是打开设置窗口本身
-- 不是配置，只在桌宠窗口（65）：
+- 不是配置，只在桌宠窗口（64）：
   - `boot`：桌宠窗口启动
   - `spaces`：首次唤醒时选择空间（唤醒后不能改，连接页只读显示）
   - `hatch`：首次唤醒（领养）流程
@@ -770,6 +770,7 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `touch`：互动：摸摸（部位触摸）
   - `save-pack-preview`：桌宠窗口给 VRM / Live2D 包存一张预览图（图鉴里显示的就是它）
   - `panel`：桌宠窗口的面板展开 / 收起（窗口尺寸）
+  - `composer-space`：聊天：她脚下的输入框占多高（她的窗口跟着长高，运行时布局，不是配置）
   - `chat`：聊天
   - `pet-stickers-list`：聊天：聊天框的表情包面板读她的表情包（只读；管理在 角色 → 表情包，docs/stickers-design.md §3.1）
   - `pick-images`：聊天：选图片
@@ -796,8 +797,6 @@ lobe-design 的取舍记在 `.agents/ux/product.md`（产品类型改为陪伴�
   - `pet-panel:toggle`：— 她的面板：再右键她关闭
   - `pet-panel:close`：— 她的面板：在她窗口里按一下就关闭
   - `pet-panel:update`：— 她的面板：打开时状态变化即时刷新
-  - `pet-panel:restore`：— 她的面板：聊天框里没发出去的一句（她正忙）放回框里（T-6162）
-  - `pet-panel:mic`：— 她的面板：聊天框 🎤 在她窗口里录音，录音进度和识别出的文字回到面板的输入框（T-6162）
   - `quit`：退出程序（桌宠工具栏 ⏻ 退出 / 托盘 / 应用菜单）
   - `debug-set`：测试钩子（只在 PIXELPET_TEST=1）
   - `debug-expire-models`：测试钩子（测速脚本 e2e/chat-latency.js 让模型目录缓存过期）

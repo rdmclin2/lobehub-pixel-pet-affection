@@ -265,7 +265,9 @@ module.exports = async function vrmStore(ctx) {
           await page.bringToFront().catch(() => {});
           await page.mouse.move(110, 150);
           await page.waitForSelector('body.hover', { timeout: 5000 });
-          await require('./pet-panel').chatFromPanel(page, '伸个懒腰'); // her panel's chat box (T-6162)
+          await page.click('[data-act="chat"]');
+          await page.fill('#chat-input', '伸个懒腰');
+          await page.press('#chat-input', 'Enter');
           const chat = await until('chat → stretch', () => { const c = document.querySelector('#pet-look canvas.vrm'); return c && /stretch/.test(c.dataset.manual || '') ? c.dataset.manual : null; }, null, 8000);
           await sleep(1200);
           const pc = await shot(`${id}-chat-stretch`);

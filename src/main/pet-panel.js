@@ -7,11 +7,6 @@
 //   close   Esc in it, a click anywhere else (it loses focus), a press in her window, a right click on her again,
 //           after a button, her window moving or hiding, she starts thinking
 //   buttons pet-panel:act → onAct({ act, food }) — main forwards it to her window, which does it (app.js runAct)
-//   chat    pet-panel:chat → onAct({ act: 'chat', text }): its chat box (T-6162); her window sends it, she starts
-//           thinking and that closes the panel. pet-panel:draft → onAct({ act: 'draft', text }) for 插个嘴;
-//           its 📎 is a button (attach) that carries the draft to her window's chat bar. Its 🎤 (voice / voice-cancel)
-//           records in her window (the microphone is hers) with the panel left open: pet-panel:mic brings how it
-//           goes and then the recognised text back into the panel's box
 // What it draws is src/renderer/panel/; where it goes is core/pet-panel.js.
 
 const path = require('node:path');
@@ -20,8 +15,7 @@ const { placeBeside } = require('../core/pet-panel');
 
 const HTML = path.join(__dirname, '..', 'renderer', 'panel', 'panel.html');
 const PAD = 12; // transparent room around the card for its shadow (panel.css body padding)
-const STAYS_OPEN = new Set(['mute', 'voice', 'voice-cancel']); // in place (静音, the panel's 🎤); everything else closes the panel first
-const CHAT_MAX = 2000; // one message from its chat box (panel.html maxlength)
+const STAYS_OPEN = new Set(['mute']); // switches in place; everything else closes the panel first
 
 class PetPanel {
   constructor({ onAct = () => {}, onClosed = () => {}, log = () => {}, testMode = false } = {}) {
@@ -134,36 +128,7 @@ class PetPanel {
     this.acts.push(act);
     if (this.acts.length > 50) this.acts.shift();
     if (!STAYS_OPEN.has(act)) this.close('act');
-    const text = typeof m.text === 'string' && m.text ? { text: m.text.slice(0, CHAT_MAX) } : {}; // 📎 / 🎤 carry the draft
-    try { this.onAct({ act, food: m.food ? String(m.food) : undefined, ...text }); } catch (e) { this.log(e); }
-  }
-
-  // a message from its chat box: it stays open until she starts thinking (app.js setThinking closes it); a
-  // message her window does not send (she is busy) comes back into the box (restore)
-  chat(m) {
-    const text = String((m && m.text) || '').slice(0, CHAT_MAX).trim();
-    if (!text) return;
-    this.acts.push('chat');
-    if (this.acts.length > 50) this.acts.shift();
-    try { this.onAct({ act: 'chat', text }); } catch (e) { this.log(e); }
-  }
-
-  restore(m) {
-    const text = String((m && m.text) || '').slice(0, CHAT_MAX);
-    if (text && this.alive) this.win.webContents.send('pet-panel:restore', { text });
-  }
-
-  // the panel's 🎤 as her window records: { state, sec, max, engine } while it goes, { text, autoSend } at the end
-  mic(m) {
-    if (!this.alive || !m) return;
-    const out = { state: String(m.state || 'idle'), sec: Math.max(0, Math.round(Number(m.sec) || 0)), max: Math.max(0, Math.round(Number(m.max) || 0)), engine: String(m.engine || '').slice(0, 40) };
-    if (typeof m.text === 'string' && m.text) { out.text = m.text.slice(0, CHAT_MAX); out.autoSend = !!m.autoSend; }
-    if (typeof m.note === 'string' && m.note) out.note = m.note.slice(0, 80);
-    this.win.webContents.send('pet-panel:mic', out);
-  }
-
-  draft(m) {
-    try { this.onAct({ act: 'draft', text: String((m && m.text) || '').slice(0, CHAT_MAX) }); } catch (e) { this.log(e); }
+    try { this.onAct({ act, food: m.food ? String(m.food) : undefined }); } catch (e) { this.log(e); }
   }
 
   close(reason = 'esc') {
