@@ -16,7 +16,7 @@
 //       page scrolls, the player has its cover and lyrics in time; screen close-ups via __gameTest.screenPng
 //   I5  the picture's hotspots: hover the bed shows 「睡觉 · 床」, a click on the bed / the desk switches
 //   I6  chat: 「现在去试一下打开电脑刷抖音吧」 → at the desk within 2 s, the laptop plays short videos, the lamp on
-//       (work turns it on); her reply in the bubble; the prompt had the [房间] note; 「回床上休息吧」 → in bed;
+//       (work turns it on); her reply in the bubble; the prompt had the [房间·真实情况] note; 「回床上休息吧」 → in bed;
 //       「大肥鱼，能收消息吗」 → nothing switches; both rounds are in her 聊天记录
 //   I7  the capsule opens her numbers; a whole round (shortened, test mode) settles in main and she goes back to 发呆
 //   I8  像素房间: the store still lists the pixel room under its new name, its engine room@1 untouched
@@ -476,7 +476,7 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
         const run = LIVE ? null : runs().slice(nRuns).find((r) => /刷抖音/.test(r.prompt));
         if (!LIVE) {
           assert.ok(run, 'the message went to her agent');
-          assert.match(run.prompt, /\[房间\][^\n]*坐到书桌前，打开了笔记本电脑[^\n]*短视频/, 'the prompt said what she just did');
+          assert.match(run.prompt, /\[房间·真实情况[^\n]*状态已切换[^\n]*坐到书桌前，打开了笔记本电脑[^\n]*短视频/, 'the prompt said what she just did');
         }
         await shot('i6-chat-douyin');
         mark('check', `${dt} ms 切到书桌，电脑屏幕放短视频；她的回复进了气泡`);
@@ -495,13 +495,13 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
         assert.equal(s3.state, 'sleep', 'a question does not switch her');
         if (!LIVE) {
           const r3 = runs().slice(nRuns).find((r) => /能收消息吗/.test(r.prompt));
-          assert.match(r3.prompt, /\[房间\][^\n]*你正在睡觉/, 'the note says where she is');
+          assert.match(r3.prompt, /\[房间·真实情况[^\n]*状态没变[^\n]*你正在睡觉/, 'the note says nothing moved and where she is');
         }
         const log = fs.readFileSync(path.join(dataDir, 'chat-log.json'), 'utf8');
         assert.match(log, /现在去试一下打开电脑刷抖音吧/);
         assert.match(log, /回床上休息吧/);
         mark('check', '问句不切状态；三句都进了聊天记录');
-        return `${LIVE ? '[live LobeHub agent] ' : ''}「打开电脑刷抖音」→ work in ${dt} ms, laptop=clips, lamp on, reply「${reply.chat.reply}」${run ? `; prompt note「${run.prompt.split('\n').find((l) => l.startsWith('[房间]'))}」` : ''}; 「回床上休息吧」→ ${s2.state}, reply「${reply2.chat.reply}」; 「能收消息吗」→ stays ${s3.state}, reply「${reply3.chat.reply}」; chat log has all three`;
+        return `${LIVE ? '[live LobeHub agent] ' : ''}「打开电脑刷抖音」→ work in ${dt} ms, laptop=clips, lamp on, reply「${reply.chat.reply}」${run ? `; prompt note「${run.prompt.split('\n').find((l) => l.startsWith('[房间'))}」` : ''}; 「回床上休息吧」→ ${s2.state}, reply「${reply2.chat.reply}」; 「能收消息吗」→ stays ${s3.state}, reply「${reply3.chat.reply}」; chat log has all three`;
       });
 
       await step(S, 'I6b 桌宠现有的聊天（设置窗口 → 聊天 → 大肥鱼）：游戏窗口里的三轮都在她的聊天记录里；在这里说「看手机吧」，房间也切到看手机', async () => {

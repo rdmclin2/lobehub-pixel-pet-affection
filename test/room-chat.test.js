@@ -26,18 +26,20 @@ function setup({ decide } = {}) {
   const pushed = [];
   const calls = [];
   const clock = { t: T0 };
-  const chat = createRoomChat({
+  const make = (extra = {}) => createRoomChat({
     open: () => ({ id: 'her-room', manifest }),
     games,
     pet,
     push: (r) => pushed.push(r),
     now: () => clock.t,
     decide: decide ? (req) => { calls.push(req); return decide(req); } : undefined,
+    ...extra,
   });
+  const chat = make();
   const room = () => games.illustratedCommand('her-room', { cmd: 'state' }, pet, { now: clock.t });
   const set = (cmd) => games.illustratedCommand('her-room', { cmd: 'set', from: 'click', ...cmd }, pet, { now: clock.t });
   games.illustratedBoot('her-room', pet, { now: clock.t });
-  return { chat, room, set, pushed, calls, clock };
+  return { chat, make, room, set, pushed, calls, clock };
 }
 // what `lh generate decide` answers: the state question and the lamp question
 const answer = (state, lamp = 'none', p = 0.97) => async () => ({ answers: { state: { type: 'choice', choice: state, confidence: p, probabilities: { [state]: p } }, lamp: { type: 'choice', choice: lamp, confidence: p, probabilities: { [lamp]: p } } } });
@@ -78,6 +80,17 @@ test('the model fails or times out: nothing moves, and the note says it did not 
     assert.match(note, /状态没变/);
     assert.match(note, /没听明白|没反应过来/);
   }
+});
+
+test('the model never answers: she does not wait past the timeout, and nothing moves', async () => {
+  const t = setup({ decide: () => new Promise(() => {}) });
+  t.set({ state: 'music' });
+  const chat = t.make({ decideTimeoutMs: 30 });
+  const t0 = Date.now();
+  const note = await chat.onMessage('玩把游戏吧');
+  assert.ok(Date.now() - t0 < 2000, 'she does not hang');
+  assert.equal(t.room().state, 'music');
+  assert.match(note, /没听明白/);
 });
 
 test('an unsure answer does not move her', async () => {

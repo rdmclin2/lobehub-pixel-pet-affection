@@ -14,7 +14,7 @@ const IRP = require('./illustrated-room-play');
 const DECIDE_TIMEOUT_MS = 6000;
 const DECIDE_MAX_CHARS = 120; // a longer message is a conversation, not an order: not worth asking
 
-function createRoomChat({ open, games, pet, decide = null, push = () => {}, acted = () => {}, log = () => {}, testMode = false, now = () => Date.now() }) {
+function createRoomChat({ open, games, pet, decide = null, push = () => {}, acted = () => {}, log = () => {}, testMode = false, now = () => Date.now(), decideTimeoutMs = DECIDE_TIMEOUT_MS }) {
   const run = (id, cmd) => games.illustratedCommand(id, cmd, pet, { testMode, now: now() });
   const record = (g, by, r, intent) => acted({ game: g.id, type: 'room:chat', obj: String((r && r.to) || (intent && intent.state) || ''), by, item: intent ? `${intent.lamp == null ? '' : `lamp:${intent.lamp}`}${intent.screen ? ` screen:${intent.screen}` : ''}` : '', at: now() });
 
@@ -22,7 +22,14 @@ function createRoomChat({ open, games, pet, decide = null, push = () => {}, acte
   async function ask(room, view, text) {
     try {
       const req = RoomIntent.buildDecision(room, view, text);
-      return RoomIntent.readDecision(await decide({ ...req, timeoutMs: DECIDE_TIMEOUT_MS }), room);
+      // our own clock too: a killed `lh` whose child still holds the pipe must not keep her reply waiting
+      let timer;
+      const late = new Promise((_, no) => { timer = setTimeout(() => no(Object.assign(new Error('room decision timed out'), { code: 'ETIMEDOUT' })), decideTimeoutMs); });
+      try {
+        return RoomIntent.readDecision(await Promise.race([decide({ ...req, timeoutMs: decideTimeoutMs }), late]), room);
+      } finally {
+        clearTimeout(timer);
+      }
     } catch (e) {
       log(e);
       return null;

@@ -43,6 +43,7 @@ if (args[0] === 'generate' && args[1] === 'asr') {
   if (cfg.mode === 'hang') setInterval(() => {}, 1000);
   else if (cfg.mode === 'fail') { console.error('12:00:00 [ERROR] Decision failed: TypeSafe provider is not configured'); process.exit(1); }
   else if (cfg.mode === 'garbage') console.log('not json');
+  else if (JSON.parse(at('-q')).state && JSON.parse(at('-q')).lamp) console.log(JSON.stringify({ answers: { state: { type: 'choice', choice: cfg.state || 'none', confidence: 0.95 }, lamp: { type: 'choice', choice: cfg.lamp || 'none', confidence: 0.95 } }, model: 'jev-1.14.0' })); // 她的房间 (core/room-chat.js)
   else console.log(JSON.stringify({ answers: { [name]: cfg.mode === 'refusal' ? { type: 'refusal' } : { probability: cfg.probability, type: 'boolean' } }, model: 'jev-1.14.0', usage: { totalTokens: 400 } }, null, 2));
 } else if (args[0] === 'whoami') {
   if (!fs.existsSync(flag)) { console.error('Not logged in'); process.exit(1); }
