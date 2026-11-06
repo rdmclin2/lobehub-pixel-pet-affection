@@ -487,16 +487,19 @@ body.visitor .visitor-bar .btn { padding: 0 var(--pet-space-xs); font-size: 11px
 .dance-menu .btn.dance-more { margin-top: var(--pet-space-xs); color: var(--lobe-color-text-secondary); border-top: 1px solid var(--pet-line-soft); border-radius: 0; }
 .dance-menu .btn:focus-visible { outline: 2px solid var(--lobe-color-info); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { #btn-dance.loading .ico { animation: none; } }
-/* 分段式表达 (docs/segmented-reply.md): one reply as short messages stacked in the bubble, each popping in after
-   a moment of 「正在输入」 (three dots); the newest is at the bottom and scrolled into view */
-.bubble.segmented { display: flex; flex-direction: column; align-items: flex-start; gap: var(--pet-space-xxs); max-height: 116px; }
-.bubble.segmented .seg { flex: none; max-width: 100%; padding: 1px var(--pet-space-sm); background: var(--lobe-color-fill-quaternary); border-radius: var(--lobe-border-radius); animation: seg-in 0.22s ease-out; }
-.bubble.segmented .seg.emoji { padding: 0 var(--pet-space-xs); background: transparent; font-size: 18px; line-height: 1.3; }
+/* 分段式表达 (docs/segmented-reply.md): like WeChat, every message is its own bubble with its own tail. #bubble stops being
+   a card and is only the column holding them (no surface, no shadow, no shared tail below); a fixed width and left
+   alignment so an earlier bubble never moves when a wider one arrives. The newest is at the bottom, scrolled into view */
+.bubble.segmented { display: flex; flex-direction: column; align-items: flex-start; gap: var(--pet-space-xs); width: 210px; max-width: 100%; max-height: 180px; padding: var(--pet-space-xxs) var(--pet-space-xxs) var(--pet-space-xxs) var(--pet-space-sm); background: transparent; border-radius: 0; box-shadow: none; scrollbar-width: none; }
+.bubble.segmented + .bubble-tail { display: none; }
+.bubble.segmented .seg, .bubble.segmented .seg-typing { position: relative; flex: none; max-width: 100%; padding: var(--pet-space-xxs) var(--pet-space-sm); background: var(--pet-surface); border-radius: var(--lobe-border-radius); box-shadow: 0 0 0 1px var(--lobe-color-border-secondary), var(--lobe-box-shadow-tertiary); animation: seg-in 0.22s ease-out; }
+.bubble.segmented .seg::before, .bubble.segmented .seg-typing::before { content: ''; position: absolute; left: -3px; top: 8px; width: 7px; height: 7px; background: var(--pet-surface); border-left: 1px solid var(--lobe-color-border-secondary); border-bottom: 1px solid var(--lobe-color-border-secondary); border-bottom-left-radius: 2px; transform: rotate(45deg); }
+.bubble.segmented .seg.emoji { font-size: 18px; line-height: 1.2; }
 .bubble.segmented .seg.live::after { content: '▍'; display: inline-block; margin-left: 1px; color: var(--lobe-color-text-tertiary); animation: caret-blink 0.9s steps(1) infinite; }
-.bubble.segmented .seg-typing { flex: none; display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 var(--pet-space-sm); background: var(--lobe-color-fill-quaternary); border-radius: var(--lobe-border-radius); }
+.bubble.segmented .seg-typing { display: inline-flex; align-items: center; gap: 3px; height: 26px; }
 .bubble.segmented .seg-typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--lobe-color-text-tertiary); animation: seg-dot 1s ease-in-out infinite; }
 .bubble.segmented .seg-typing i:nth-of-type(2) { animation-delay: 0.15s; }
 .bubble.segmented .seg-typing i:nth-of-type(3) { animation-delay: 0.3s; }
 @keyframes seg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes seg-dot { 0%, 60%, 100% { opacity: 0.3; transform: none; } 30% { opacity: 1; transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .bubble.segmented .seg, .bubble.segmented .seg-typing i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .bubble.segmented .seg, .bubble.segmented .seg-typing, .bubble.segmented .seg-typing i { animation: none; } }

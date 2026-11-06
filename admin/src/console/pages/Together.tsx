@@ -12,6 +12,7 @@ import { ask } from '../fields';
 import { ACTION_LABEL } from '../stage/CharacterStage';
 import { useStore } from '../store';
 import { MusicCard } from './MusicCard';
+import { splitReply } from './replySegments';
 
 const Header = ({ page }: { page: string }) => {
   const { schema } = useStore();
@@ -120,7 +121,8 @@ const HistorySticker = ({ sticker }: { sticker: NonNullable<HistoryMessage['stic
 };
 
 export const HistoryPage = () => {
-  const { view } = useStore();
+  const { view, settings } = useStore();
+  const prefs = settings.prefs;
   const [list, setList] = useState<HistorySummary[] | null>(null);
   const [open, setOpen] = useState<HistorySession | null>(null);
   // a new message from the pet window (view changes) refreshes the list / the open conversation
@@ -144,33 +146,43 @@ export const HistoryPage = () => {
             </Button>
           </div>
           <Flexbox data-history-thread={open.id} gap={8}>
-            {open.messages.map((m, i) => (
-              <Block
-                data-role={m.role}
-                key={`${m.at}-${i}`}
-                padding={12}
-                style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%' }}
-                variant={m.role === 'user' ? 'filled' : 'outlined'}
-              >
-                <Text fontSize={12} type="secondary">
-                  {m.role === 'user' ? '我' : open.name} · {fmt(m.at)}
-                </Text>
-                {(m.status || m.text || !m.sticker) && (
-                  <Text data-history-text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} type={m.status ? 'secondary' : undefined}>
-                    {m.status ? (m.status === 'canceled' ? '（这句被打断了，她没有回复）' : '（出错了，她没有回复）') : m.text || ''}
-                  </Text>
-                )}
-                {m.sticker && <HistorySticker sticker={m.sticker} />}
-                {m.attachments && (m.attachments.images || m.attachments.files?.length) ? (
-                  <Text fontSize={12} type="secondary">
-                    {[m.attachments.images ? `📷 ${m.attachments.images} 张图片` : '', ...(m.attachments.files ?? []).map((f) => `📄 ${f}`)].filter(Boolean).join('  ')}
-                  </Text>
-                ) : null}
-                {(m.attachments?.music ?? []).map((x) => (
-                  <MusicCard key={x.id} missing={!!x.missing} music={x} />
-                ))}
-              </Block>
-            ))}
+            {open.messages.flatMap((m, i) => {
+              // 分段式表达: like WeChat, each message of her reply is its own bubble (saved as one record, a line per message)
+              const parts = m.role === 'pet' && !m.status && m.text ? splitReply(m.text, prefs) : [null];
+              return parts.map((part, p) => {
+                const last = p === parts.length - 1;
+                return (
+                  <Block
+                    data-role={m.role}
+                    data-seg-index={parts.length > 1 ? p : undefined}
+                    key={`${m.at}-${i}-${p}`}
+                    padding={12}
+                    style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '80%' }}
+                    variant={m.role === 'user' ? 'filled' : 'outlined'}
+                  >
+                    {p === 0 && (
+                      <Text fontSize={12} type="secondary">
+                        {m.role === 'user' ? '我' : open.name} · {fmt(m.at)}
+                      </Text>
+                    )}
+                    {(m.status || m.text || !m.sticker) && (
+                      <Text data-history-text style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }} type={m.status ? 'secondary' : undefined}>
+                        {m.status ? (m.status === 'canceled' ? '（这句被打断了，她没有回复）' : '（出错了，她没有回复）') : part ?? m.text ?? ''}
+                      </Text>
+                    )}
+                    {last && m.sticker && <HistorySticker sticker={m.sticker} />}
+                    {last && m.attachments && (m.attachments.images || m.attachments.files?.length) ? (
+                      <Text fontSize={12} type="secondary">
+                        {[m.attachments.images ? `📷 ${m.attachments.images} 张图片` : '', ...(m.attachments.files ?? []).map((f) => `📄 ${f}`)].filter(Boolean).join('  ')}
+                      </Text>
+                    ) : null}
+                    {last && (m.attachments?.music ?? []).map((x) => (
+                      <MusicCard key={x.id} missing={!!x.missing} music={x} />
+                    ))}
+                  </Block>
+                );
+              });
+            })}
           </Flexbox>
         </Flexbox>
       </>

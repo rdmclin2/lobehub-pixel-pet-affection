@@ -5,16 +5,17 @@
  * Everything lives in main (`petAdmin.chat`): this page keeps only what is on screen, and `#/chat/<id>` says
  * whose conversation is open, so a reload or a trip to another page reads it all back.
  */
-import { ActionIcon, Alert, Button, createStaticStyles, cssVar, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
+import { ActionIcon, Alert, Button, createStaticStyles, cssVar, cx, Empty, Flexbox, Icon, Image, PreviewGroup, Select, Spin, Tag, Text, toast, Tooltip } from '@lobehub/ui';
 import { ChatInputActionBar, ChatInputAreaInner, ChatItem, ChatSendButton, LoadingDots } from '@lobehub/ui/chat';
 import { ArrowDown, Eye, History, ImagePlus, MessagesSquare, Music, RotateCw, User, X } from 'lucide-react';
-import { type ClipboardEvent, type DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ClipboardEvent, type DragEvent, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import ChatLive from '../../../../src/core/chat-live.js';
 import { api, reasonText, type ChatCharacter, type ChatDelta, type ChatMessage, type ChatMusicEvent, type ChatSticker, type RosterRow, type UserFace } from '../api';
 import { clockOf, MusicCard } from './MusicCard';
 import { CharacterAvatar, UserAvatar } from '../stage/CharacterAvatar';
 import { useStore } from '../store';
+import { splitReply, usePacedReply } from './replySegments';
 import { StickerPicker } from './StickerPicker';
 
 const MAX_IMAGES = 4;
@@ -27,6 +28,17 @@ const PAGE = 40;
 const STREAM_MARKDOWN = { animated: true, streamSmoothingPreset: 'realtime' } as const;
 
 const styles = createStaticStyles(({ css }) => ({
+  // 分段式表达: the messages of one reply sit close together, like WeChat; the usual room stays around the reply as a whole
+  segNext: css`
+    && {
+      padding-block-start: 2px;
+    }
+  `,
+  segNotLast: css`
+    && {
+      padding-block-end: 2px;
+    }
+  `,
   // a message that is only a 表情包 (docs/stickers-design.md §3.3): the picture fills its bubble (no text padding)
   stickerOnly: css`
     .lobe-chat-chat-item__message {
@@ -307,7 +319,10 @@ const StickerImage = ({ sticker, size }: { sticker: ChatSticker; size: number })
 };
 
 export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) => void }) => {
-  const { roster, merge } = useStore();
+  const { roster, merge, settings } = useStore();
+  const prefs = settings.prefs;
+  const pacer = usePacedReply(prefs);
+  const { paced } = pacer;
   const [characters, setCharacters] = useState<ChatCharacter[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -442,7 +457,10 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
       if (!frame) frame = requestAnimationFrame(flush);
     });
     const offDone = chat().onDone((d) => {
-      if (activeRef.current === d.speciesId) setMessages((ms) => (ms.some((x) => x.id === d.message.id) ? ms : [...ms, d.message]));
+      if (activeRef.current === d.speciesId) {
+        setMessages((ms) => (ms.some((x) => x.id === d.message.id) ? ms : [...ms, d.message]));
+        pacer.finish(d.speciesId, d.message); // 分段式表达: the rest of her messages keep coming one by one
+      }
       queue = queue.filter((x) => x.turnId !== d.turnId);
       if (liveRef.current?.speciesId === d.speciesId) liveRef.current = null;
       setLive((l) => (l && l.speciesId === d.speciesId ? null : l));
@@ -460,7 +478,16 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
       offDone();
       offChanged();
     };
-  }, [loadLatest, refreshCharacters]);
+  }, [loadLatest, pacer.finish, refreshCharacters]);
+
+  // 分段式表达: from its second line on, the reply being written comes out message by message; another character,
+  // a new round or a turn that ended without a reply stops it (the saved messages then show whole)
+  const liveText = liveHere?.text;
+  useEffect(() => {
+    if (activeId && liveText) pacer.feed(activeId, liveText);
+    else if (!liveText && !pacer.paced?.messageId) pacer.cancel();
+  }, [activeId, liveText, pacer.feed, pacer.cancel, pacer.paced?.messageId]);
+  useEffect(() => pacer.cancel, [activeId, pacer.cancel]);
 
   // stay at the bottom while she writes — unless you scrolled up to read
   // always instant: a smooth scroll would pass through "not at the bottom" and unstick itself mid-way
@@ -470,7 +497,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   }, []);
   useLayoutEffect(() => {
     if (stick.current) toBottom();
-  }, [messages, liveHere?.text, activeId, loading, toBottom]);
+  }, [messages, liveHere?.text, paced, activeId, loading, toBottom]);
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -584,6 +611,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
       setInput('');
       setPending([]);
     }
+    pacer.cancel();
     setLive({ speciesId: sid, text: '', turnId: null });
     const r = await chat().send({
       images: images.map((i) => (i.path ? { path: i.path } : { dataUrl: i.dataUrl, name: i.name })),
@@ -687,6 +715,7 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
   const herAvatar = { avatar: <CharAvatar row={row} size={32} />, backgroundColor: 'transparent', title: name };
   const userAvatar = me?.avatar ? { avatar: <UserAvatar name={me.name || '你'} onFail={dropMe} size={32} src={me.avatar} />, backgroundColor: 'transparent', title: me.name || '你' } : USER_AVATAR;
 
+  const pacedLive = paced && !paced.messageId ? paced : null;
   const renderMessage = (x: ChatMessage, i: number) => {
     const isUser = x.role === 'user';
     const pictures = (x.attachments.length > 0 || x.unsavedImages > 0) && (
@@ -707,62 +736,83 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
     // a reply with words and a sticker shows it under the words
     const onlySticker = !!x.sticker && !x.text && x.status === 'done';
     const sticker = x.sticker && <StickerImage key="sticker" sticker={x.sticker} size={onlySticker ? 120 : 96} />;
+    // 分段式表达: like WeChat, each message of her reply is its own bubble with its own avatar; what belongs to the
+    // reply as a whole (time, model, sticker, music, error) is under the last one. A reply still coming out shows
+    // only the messages so far, then the typing dots.
+    const coming = !isUser && paced?.messageId === x.id ? paced : null;
+    const parts = coming ? coming.segments.slice(0, coming.shown) : !isUser && x.text ? splitReply(x.text, prefs) : [x.text];
+    const lastPart = coming ? -1 : parts.length - 1;
+    const before = parts.slice(0, -1).map((part, p) => (
+      <ChatItem avatar={herAvatar} className={cx(p > 0 && styles.segNext, styles.segNotLast)} data-message-id={x.id} data-role={x.role} data-seg-index={p} data-status={x.status} key={`${x.id}-${p}`} message={part} placement="left" showTitle={false} variant="bubble" />
+    ));
+    if (coming) {
+      return (
+        <Fragment key={x.id}>
+          {before}
+          {parts.length > 0 && <ChatItem avatar={herAvatar} className={cx(parts.length > 1 && styles.segNext, styles.segNotLast)} data-message-id={x.id} data-role={x.role} data-seg-index={parts.length - 1} data-status={x.status} message={parts.at(-1)} placement="left" showTitle={false} variant="bubble" />}
+          <ChatItem avatar={herAvatar} className={styles.segNext} data-seg-typing message="" placement="left" renderMessage={() => <LoadingDots />} showTitle={false} variant="bubble" />
+        </Fragment>
+      );
+    }
     return (
-      <ChatItem
-        aboveMessage={isUser ? pictures : undefined}
-        avatar={isUser ? userAvatar : herAvatar}
-        belowMessage={
-          <Flexbox gap={8} paddingBlock={4}>
-            {!isUser && (x.music?.length ?? 0) > 0 && (
-              <Flexbox data-message-music gap={8}>
-                {x.music!.map((mu) => (
-                  <MusicCard key={mu.id} music={mu} />
-                ))}
+      <Fragment key={x.id}>
+        {before}
+        <ChatItem
+          aboveMessage={isUser ? pictures : undefined}
+          avatar={isUser ? userAvatar : herAvatar}
+          belowMessage={
+            <Flexbox gap={8} paddingBlock={4}>
+              {!isUser && (x.music?.length ?? 0) > 0 && (
+                <Flexbox data-message-music gap={8}>
+                  {x.music!.map((mu) => (
+                    <MusicCard key={mu.id} music={mu} />
+                  ))}
+                </Flexbox>
+              )}
+              <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'}>
+              {!isUser && x.model && (
+                <Text data-message-model fontSize={12} type="secondary">
+                  {modelLabel(row, x.model)}
+                </Text>
+              )}
+              {x.via === 'desktop' && (
+                <Tooltip title="这一轮是在桌宠的聊天框里聊的">
+                  <Tag size="small">桌面</Tag>
+                </Tooltip>
+              )}
+              {x.status === 'aborted' && <Tag size="small">已停止</Tag>}
               </Flexbox>
-            )}
-            <Flexbox align="center" gap={8} horizontal justify={isUser ? 'flex-end' : 'flex-start'}>
-            {!isUser && x.model && (
-              <Text data-message-model fontSize={12} type="secondary">
-                {modelLabel(row, x.model)}
-              </Text>
-            )}
-            {x.via === 'desktop' && (
-              <Tooltip title="这一轮是在桌宠的聊天框里聊的">
-                <Tag size="small">桌面</Tag>
-              </Tooltip>
-            )}
-            {x.status === 'aborted' && <Tag size="small">已停止</Tag>}
             </Flexbox>
-          </Flexbox>
-        }
-        className={onlySticker ? styles.stickerOnly : undefined}
-        data-message-id={x.id}
-        data-role={x.role}
-        data-sticker-message={x.sticker ? 'true' : undefined}
-        data-status={x.status}
-        error={
-          x.status === 'error'
-            ? {
-                action: (
-                  <Button data-retry icon={RotateCw} onClick={() => retry(i)} size="small">
-                    重试
-                  </Button>
-                ),
-                description: x.error,
-                showIcon: true,
-                title: '回复没有完成',
-                type: 'error',
-              }
-            : undefined
-        }
-        key={x.id}
-        message={x.text || (x.status === 'aborted' ? '（还没说什么就停止了）' : '')}
-        placement={isUser ? 'right' : 'left'}
-        renderMessage={x.sticker ? (content) => (onlySticker ? sticker : <Flexbox gap={8}>{content}{sticker}</Flexbox>) : undefined}
-        showTitle={false}
-        time={x.createdAt}
-        variant="bubble"
-      />
+          }
+          className={cx(onlySticker && styles.stickerOnly, lastPart > 0 && styles.segNext)}
+          data-message-id={x.id}
+          data-seg-index={lastPart > 0 ? lastPart : undefined}
+          data-role={x.role}
+          data-sticker-message={x.sticker ? 'true' : undefined}
+          data-status={x.status}
+          error={
+            x.status === 'error'
+              ? {
+                  action: (
+                    <Button data-retry icon={RotateCw} onClick={() => retry(i)} size="small">
+                      重试
+                    </Button>
+                  ),
+                  description: x.error,
+                  showIcon: true,
+                  title: '回复没有完成',
+                  type: 'error',
+                }
+              : undefined
+          }
+          message={parts[lastPart] || (x.status === 'aborted' ? '（还没说什么就停止了）' : '')}
+          placement={isUser ? 'right' : 'left'}
+          renderMessage={x.sticker ? (content) => (onlySticker ? sticker : <Flexbox gap={8}>{content}{sticker}</Flexbox>) : undefined}
+          showTitle={false}
+          time={x.createdAt}
+          variant="bubble"
+        />
+      </Fragment>
     );
   };
 
@@ -904,9 +954,13 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                   </div>
                 )}
                 {messages.map(renderMessage)}
-                {liveHere && (
+                {liveHere && <>
+                  {pacedLive?.segments.slice(0, pacedLive.shown).map((part, p) => (
+                    <ChatItem avatar={herAvatar} className={cx(p > 0 && styles.segNext, styles.segNotLast)} data-role="assistant" data-seg-index={p} key={p} message={part} placement="left" showTitle={false} variant="bubble" />
+                  ))}
                   <ChatItem
                     avatar={herAvatar}
+                    className={pacedLive ? styles.segNext : undefined}
                     belowMessage={
                       <Flexbox gap={8} paddingBlock={4}>
                         {composingHere && (
@@ -930,16 +984,17 @@ export const ChatPage = ({ id, navigate }: { id?: string; navigate: (p: string) 
                       </Flexbox>
                     }
                     data-role="assistant"
+                    data-seg-typing={pacedLive ? true : undefined}
                     data-streaming
                     loading
                     markdownProps={STREAM_MARKDOWN}
-                    message={liveHere.text}
+                    message={pacedLive ? '' : liveHere.text}
                     placement="left"
-                    renderMessage={(content) => (liveHere.text ? content : <LoadingDots />)}
+                    renderMessage={(content) => (liveHere.text && !pacedLive ? content : <LoadingDots />)}
                     showTitle={false}
                     variant="bubble"
                   />
-                )}
+                </>}
               </Flexbox>
             )}
           </div>

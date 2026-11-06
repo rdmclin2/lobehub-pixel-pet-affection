@@ -1135,8 +1135,8 @@ function say(text, kind, source, reason, meme = null, streamId = null, music = n
 }
 // ---- 分段式表达 (core/segments.js, docs/segmented-reply.md) ------------------------------------------------------
 // A reply with several lines is shown as several short messages, one after another, each after a moment of
-// 「正在输入」 (Seg.typingMs: by its length, with some jitter). The bubble becomes a stack (.bubble.segmented,
-// one .seg per message, .seg-typing for the dots). Streamed text feeds the same player: lines that ended queue
+// 「正在输入」 (Seg.typingMs: by its length, with some jitter). Like WeChat each message is its own bubble: #bubble
+// turns into the column holding them (.bubble.segmented: no surface of its own), one .seg per message, .seg-typing for the dots. Streamed text feeds the same player: lines that ended queue
 // up and come out at her pace (a reply that arrives all at once — lh today — still comes out one by one); the
 // line still being written shows with a caret once it is its turn. The final 'say' sets the authoritative
 // messages (a tool preamble or the meme tag is corrected in place). One timer at a time, owned by the player:
@@ -1167,7 +1167,7 @@ function segFor(text, source, kind, streamId) {
   const p = Seg.plan(text, { final: true, ...segOpts() });
   return p.segments.length >= 2 || (streamId && segPlayer.id() === streamId) ? p : null;
 }
-// The bubble as the stack for reply `id` (a new id clears it).
+// The bubble as the column of messages for reply `id` (a new id clears it).
 function segEnter(id, kind) {
   const b = $('bubble');
   stopComposing();
@@ -1222,7 +1222,7 @@ function segTyping(on) {
     el.setAttribute('aria-label', '正在输入');
     el.innerHTML = '<i></i><i></i><i></i>';
   }
-  b.appendChild(el); // always the last thing in the stack
+  b.appendChild(el); // always the last thing in the column
   b.scrollTop = b.scrollHeight;
 }
 function segPut(i, text, live) {

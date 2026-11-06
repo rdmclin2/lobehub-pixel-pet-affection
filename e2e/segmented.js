@@ -6,6 +6,8 @@
 //   SG1  a reply of 4 messages that arrives all at once (today's lh): 🥺 → 在吗？ → 有点想你了。 → 在干什么呀？,
 //        one at a time with typing dots between; 聊天记录 keeps the whole reply once; read aloud once; her agent's
 //        system role asks for it (playful, one message per line)
+//   SG1b like WeChat: every message is its own bubble (own surface, shadow and tail, apart from the others), not lines in one
+//        card; 5 messages (the most she sends on her own) fit without scrolling, a 6th scrolls to the newest; she does not move
 //   SG2  a reply that really streams (pieces 600 ms apart): the first line shows while she is still writing, a later
 //        line is 「正在输入」 until it ends, the order holds
 //   SG3  the owner sends a new message while one is still coming out: the rest stops, no timer is left (nothing of
@@ -141,6 +143,62 @@ module.exports = function segmentedScenario(ctx) {
         const log = sl.map((e) => `${e.ev}${e.i == null ? '' : `#${e.i}`}@${e.at - t0}ms`).join(' ');
         timeline.push(`  segLog: ${log}`, `  gaps: ${gaps.join(' / ')} ms`, '');
         return note(`${line}; gaps ${gaps.join('/')} ms; typing dots between each; chat-log +2 (pet = whole reply, 4 lines); TTS offered once; system role has the 分段 rule`);
+      }, page);
+
+      await step(S, 'SG1b like WeChat: each message is its own bubble, not lines stacked in one card', async () => {
+        const look = () => page.evaluate(() => {
+          const b = document.getElementById('bubble');
+          const cs = getComputedStyle(b);
+          const tail = document.querySelector('.bubble-tail');
+          const pet = document.getElementById('pet-body').getBoundingClientRect();
+          return {
+            card: { bg: cs.backgroundColor, shadow: cs.boxShadow },
+            sharedTail: getComputedStyle(tail).display,
+            scrolls: b.scrollHeight > b.clientHeight,
+            dims: { scrollH: b.scrollHeight, clientH: b.clientHeight, win: innerHeight, stageTop: Math.round(document.getElementById('stage').getBoundingClientRect().top) },
+            petTop: Math.round(pet.top),
+            petBottom: Math.round(pet.bottom),
+            segs: [...b.querySelectorAll('.seg')].map((e) => {
+              const c = getComputedStyle(e);
+              const r = e.getBoundingClientRect();
+              return { text: e.textContent, bg: c.backgroundColor, shadow: c.boxShadow, tail: getComputedStyle(e, '::before').content, top: r.top, bottom: r.bottom, left: r.left };
+            }),
+          };
+        });
+        const check = (v, msgs) => {
+          assert.equal(v.card.bg, 'rgba(0, 0, 0, 0)', `the column still has a card behind the messages: ${v.card.bg}`);
+          assert.equal(v.card.shadow, 'none', 'the column still has a card shadow');
+          assert.equal(v.sharedTail, 'none', 'the one shared tail is still under the messages');
+          assert.deepEqual(v.segs.map((x) => x.text), msgs);
+          for (const x of v.segs) {
+            assert.notEqual(x.bg, 'rgba(0, 0, 0, 0)', `「${x.text}」 has no bubble of its own`);
+            assert.notEqual(x.shadow, 'none', `「${x.text}」 has no edge of its own`);
+            assert.notEqual(x.tail, 'none', `「${x.text}」 has no tail of its own`);
+          }
+          for (let i = 1; i < v.segs.length; i++) assert.ok(v.segs[i].top - v.segs[i - 1].bottom >= 3, `messages ${i} and ${i + 1} touch`);
+          assert.equal(new Set(v.segs.map((x) => Math.round(x.left))).size, 1, 'the bubbles are not left aligned');
+        };
+        const v4 = await look(); // the 4 messages of SG1
+        check(v4, MSGS);
+        const FIVE = ['🥺', '在吗？', '有点想你了。', '在干什么呀？', '理理我嘛～'];
+        reply({ pieces: [FIVE.join('\n')], gapMs: 0 });
+        await sendText('嗨～');
+        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length >= n && !document.querySelector('#bubble .seg-typing'), FIVE.length, { timeout: 20000 });
+        await page.waitForTimeout(300);
+        await shot('sg1b-five-bubbles');
+        const v5 = await look();
+        check(v5, FIVE);
+        assert.equal(v5.scrolls, false, `five short messages do not fit without scrolling: ${JSON.stringify(v5.dims)}`);
+        assert.deepEqual([v5.petTop, v5.petBottom], [v4.petTop, v4.petBottom], 'the column pushed her down');
+        const SIX = [...FIVE, '不理我我就闹了'];
+        reply({ pieces: [SIX.join('\n')], gapMs: 0 });
+        await sendText('嗨～～');
+        await page.waitForFunction((n) => document.querySelectorAll('#bubble .seg').length >= n && !document.querySelector('#bubble .seg-typing'), SIX.length, { timeout: 20000 });
+        await page.waitForTimeout(300);
+        await shot('sg1b-six-scrolled-to-newest');
+        const newest = await page.evaluate(() => { const b = document.getElementById('bubble').getBoundingClientRect(); const r = [...document.querySelectorAll('#bubble .seg')].pop().getBoundingClientRect(); return r.bottom <= b.bottom + 1; });
+        assert.equal(newest, true, 'the newest message is not in view');
+        return note(`column bg ${v5.card.bg}, shadow ${v5.card.shadow}, shared tail ${v5.sharedTail}; ${v5.segs.length} bubbles each with own bg ${v5.segs[0].bg} and tail, gaps ${v5.segs.slice(1).map((x, i) => Math.round(x.top - v5.segs[i].bottom)).join('/')} px; no scrolling (${JSON.stringify(v5.dims)}); pet stays at y ${v5.petTop}–${v5.petBottom}; a 6th message scrolls to the newest`);
       }, page);
 
       await step(S, 'SG2 a reply that really streams: the first line shows while she writes, later ones wait as 「正在输入」', async () => {

@@ -146,6 +146,9 @@ process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
         assert.ok(petText !== null, `no reply to 「${text}」`);
         await page.waitForTimeout(300);
         await shot(`sl1-t${n}-final`);
+        // like WeChat: each message is its own bubble, the column behind them has no card
+        const look = await page.evaluate(() => { const b = document.getElementById('bubble'); const c = getComputedStyle(b); return { segmented: b.classList.contains('segmented'), bg: c.backgroundColor, shadow: c.boxShadow, own: [...b.querySelectorAll('.seg')].every((e) => getComputedStyle(e).backgroundColor !== 'rgba(0, 0, 0, 0)') }; });
+        if (look.segmented) assert.deepEqual([look.bg, look.shadow, look.own], ['rgba(0, 0, 0, 0)', 'none', true], `turn ${n}: not separate bubbles`);
         const samples = await stopSampler();
         const log = (await segLogWall()).filter((e) => e.wall >= tSend);
         const start = log.find((e) => e.ev === 'start');
@@ -266,8 +269,21 @@ process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
         await admin.evaluate(() => document.querySelector('[data-session]').click());
         const want = (first || turns[turns.length - 1]).full.split('\n')[0].trim();
         await adminUntil(admin, (w) => [...document.querySelectorAll('[data-history-thread] [data-role="pet"] [data-history-text]')].some((e) => e.textContent.includes(w)), want, 10000, 'the saved reply');
+        // like WeChat: the burst is one bubble per message in 聊天记录 and on the 聊天 page too, not lines in one
+        if (first) {
+          const hist = await admin.evaluate(() => document.querySelectorAll('[data-history-thread] [data-role="pet"][data-seg-index]').length);
+          assert.ok(hist >= first.msgs.length, `聊天记录 shows ${hist} separate messages`);
+        }
+        await admin.evaluate((w) => { [...document.querySelectorAll('[data-history-thread] [data-history-text]')].find((e) => e.textContent.includes(w))?.scrollIntoView({ block: 'start' }); }, want);
+        await admin.waitForTimeout(300);
         await admin.screenshot({ path: path.join(SHOTS, 'sl3-history.png') });
         const shown = await admin.evaluate(() => [...document.querySelectorAll('[data-history-thread] [data-history-text]')].map((e) => e.textContent));
+        await admin.evaluate(() => { location.hash = '#/chat'; });
+        await adminUntil(admin, () => document.querySelectorAll('[data-chat-page] [data-role="assistant"][data-seg-index]').length >= 2, null, 15000, 'separate bubbles on the 聊天 page');
+        const lastOfFirst = (first || turns[turns.length - 1]).msgs.at(-1);
+        await admin.evaluate((w) => { [...document.querySelectorAll('[data-chat-page] [data-role="assistant"]')].find((e) => e.innerText.includes(w))?.scrollIntoView({ block: 'center' }); }, lastOfFirst);
+        await admin.waitForTimeout(400);
+        await admin.screenshot({ path: path.join(SHOTS, 'sl3-chat-page.png') });
         await admin.close().catch(() => {});
         assert.deepEqual(errors, [], errors.join('\n'));
         timeline.push('[SL3 聊天记录 / 朗读 / 报错]', ...msgs.map((m) => `  ${m.at ? iso(m.at) : ''} ${m.role}: ${JSON.stringify(m.text)}`), `  read-aloud offers (chat): ${offers.length} ${JSON.stringify(offers.map((o) => (o.text || '').slice(0, 40)))}`, `  history page texts: ${JSON.stringify(shown)}`, `  page/console errors: ${errors.length}`, '');

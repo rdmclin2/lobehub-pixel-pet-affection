@@ -71,6 +71,7 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
       if (/颜色/.test(last)) return { pieces: ['图里是', '一块', '红色。'], gapMs: 150, id };
       if (/我叫什么/.test(last)) return { pieces: /我叫小明/.test(seen) ? ['你叫', '小明。'] : ['我不知道', '。'], gapMs: 150, id };
       if (/暗号/.test(last)) return { pieces: /青柠42/.test(text) ? ['你之前说过，', '暗号是青柠42。'] : ['我想不起来了。'], gapMs: 150, id };
+      if (/连发/.test(last)) return { pieces: ['🥺\n', '在吗？\n', '有点想你了。\n', '在干什么呀？'], gapMs: 0, id };
       if (/记住/.test(last)) return { pieces: ['好的', '，记住了。'], gapMs: 150, id };
       return { pieces: MD, gapMs: 300, id };
     });
@@ -283,6 +284,43 @@ module.exports = function chatUiScenario(ctx, opts = {}) {
         assert.deepEqual(b.slice(-4).map((x) => x.role), ['user', 'assistant', 'user', 'assistant']);
         return note(`last answer 「${b[b.length - 1].text}」 — from the topic's own history (the request carried only the new message)`);
       }, admin);
+
+      await step(S, 'U5b 分段式表达：多行回复像微信一样一条一个气泡，逐条出现；聊天记录也一条一个', async () => {
+        const MSGS = ['🥺', '在吗？', '有点想你了。', '在干什么呀？'];
+        const parts = () => admin.evaluate(() => [...document.querySelectorAll('[data-chat-page] [data-role="assistant"][data-seg-index]')].map((el) => (el.querySelector('.lobe-markdown, [class*="markdown"]') || el).innerText.trim()));
+        const counts = [];
+        await admin.fill('[data-chat-textarea]', '连发几条给我');
+        await admin.press('[data-chat-textarea]', 'Enter');
+        const t0 = Date.now();
+        const seenAt = [];
+        let typing = false;
+        while (Date.now() - t0 < 15000) {
+          const now = await parts();
+          typing = typing || (now.length > 0 && now.length < MSGS.length && (await admin.evaluate(() => !!document.querySelector('[data-seg-typing]'))));
+          if (now.length !== counts.at(-1)) { counts.push(now.length); seenAt.push(Date.now() - t0); }
+          if (now.length >= MSGS.length) break;
+          await sleep(40);
+        }
+        await until(() => !document.querySelector('[data-seg-typing]'), null, 5000, 'typing dots gone');
+        assert.deepEqual(counts.filter((c) => c > 0), [1, 2, 3, 4], `messages on the page went ${JSON.stringify(counts)}`);
+        assert.ok(typing, 'no typing dots between messages');
+        const gaps = seenAt.slice(-4).slice(1).map((x, i) => x - seenAt.slice(-4)[i]);
+        assert.ok(gaps.every((g) => g >= 200), `gaps ${gaps}`);
+        await until(() => !document.querySelector('[data-streaming]') && !document.body.classList.contains('busy'), null, 15000, 'reply ended');
+        const final = await parts();
+        assert.deepEqual(final, MSGS);
+        // one bubble each, one below the other; the model name only under the last
+        const boxes = await admin.evaluate(() => [...document.querySelectorAll('[data-chat-page] [data-role="assistant"][data-seg-index]')].map((el) => { const m = el.querySelector('.lobe-chat-chat-item__message') || el; const r = m.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, model: !!el.querySelector('[data-message-model]'), avatar: !!el.querySelector('[data-avatar], img') }; }));
+        const pitch = boxes.slice(1).map((b, i) => Math.round(b.top - boxes[i].bottom));
+        assert.ok(pitch.every((g) => g > 0 && g <= 24), `the bubbles should be close together, apart: ${pitch}`);
+        assert.ok(boxes.every((b) => b.avatar), 'a message without her avatar');
+        assert.deepEqual(boxes.map((b) => b.model), [false, false, false, true]);
+        await shot('u5b-segmented');
+        // a reload shows them the same way: only the display splits it, 聊天记录 keeps one record
+        const saved = JSON.parse(fs.readFileSync(path.join(data, 'chat-log.json'), 'utf8')).messages.filter((m) => m.role === 'pet').pop().text;
+        assert.equal(saved, MSGS.join('\n'));
+        return note(`4 separate bubbles ${MSGS.map((m) => `「${m}」`).join(' → ')}, counts ${counts.join('→')}, gaps ${gaps.join('/')} ms, typing dots between, bubbles ${pitch.join('/')} px apart, each with her avatar, model label under the last only; chat-log keeps one record of 4 lines`);
+      });
 
       await step(S, 'U6 问起以前的事：从聊天记录里翻出更早的轮次一起发给她', async () => {
         await sendAndWait('你还记得我之前说的暗号吗？');
