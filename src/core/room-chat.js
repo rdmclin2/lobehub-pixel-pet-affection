@@ -11,7 +11,7 @@
 const RoomIntent = require('./room-intent');
 const IRP = require('./illustrated-room-play');
 
-const DECIDE_TIMEOUT_MS = 6000;
+const DECIDE_TIMEOUT_MS = 10000; // one in 44 real calls took over 6 s while the rest took 1–3 s; same limit as 插个嘴
 const DECIDE_MAX_CHARS = 120; // a longer message is a conversation, not an order: not worth asking
 
 function createRoomChat({ open, games, pet, decide = null, push = () => {}, acted = () => {}, log = () => {}, testMode = false, now = () => Date.now(), decideTimeoutMs = DECIDE_TIMEOUT_MS }) {
@@ -26,7 +26,7 @@ function createRoomChat({ open, games, pet, decide = null, push = () => {}, acte
       let timer;
       const late = new Promise((_, no) => { timer = setTimeout(() => no(Object.assign(new Error('room decision timed out'), { code: 'ETIMEDOUT' })), decideTimeoutMs); });
       try {
-        return RoomIntent.readDecision(await Promise.race([decide({ ...req, timeoutMs: decideTimeoutMs }), late]), room);
+        return RoomIntent.readDecision(await Promise.race([decide({ ...req, timeoutMs: decideTimeoutMs }), late]), room, text);
       } finally {
         clearTimeout(timer);
       }

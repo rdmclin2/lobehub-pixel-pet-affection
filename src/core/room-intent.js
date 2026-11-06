@@ -15,7 +15,7 @@
     work: ['工作', '干活', '写代码', '打开电脑', '开电脑', '用电脑', '上网', '写作业', '学习', '加班', '写周报', '码字'],
     phone: ['看手机', '玩手机', '刷手机', '拿手机', '刷微博', '刷朋友圈', '回消息'],
     music: ['听歌', '听音乐', '放首歌', '放歌', '放音乐', '来首歌', '听首歌', '戴耳机'],
-    game: ['打游戏', '玩游戏', '开一局', '打一局', '来一局', '玩会游戏', '打会游戏', '上分'],
+    game: ['打游戏', '玩游戏', '开一局', '打一局', '来一局', '玩会游戏', '打会游戏', '玩把游戏', '打把游戏', '上分'],
     idle: ['发呆', '发会儿呆', '发会呆', '发一会儿呆', '歇会', '歇一会', '犯懒', '坐着', '坐一会', '坐会儿', '什么都别做', '放空', '摸鱼'],
   };
   // what a screen plays, and the words for it
@@ -51,7 +51,7 @@
 
   const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
   // 「看会儿手机」「打一会游戏」「放一首歌」 say the same as 看手机 / 打游戏 / 放首歌: looked up without the filler
-  const plain = (t) => t.replace(/(看|玩|刷|听|打|写)一?会儿?/g, '$1').replace(/(放|听|来)一首/g, '$1首');
+  const plain = (t) => t.replace(/(看|玩|刷|听|打|写)一?会儿?/g, '$1').replace(/(放|听|来)一首/g, '$1首').replace(/(玩|打)一把/g, '$1把');
   // every place a word occurs, and whether it is negated there
   function hits(text, word) {
     const out = [];
@@ -143,6 +143,7 @@
 
   // ---- the decision model: what the rules could not tell --------------------------------------------------------
   const DECISION_MIN = 0.6; // below this she stays where she is: a wrong move is worse than asking again
+  const DECISION_MIN_QUESTION = 0.85; // 「大肥鱼，能收消息吗」: a question is talk unless the model is very sure (要不要来一把？)
   // room, now: the room, its view (state, label, lamp). → { questions, state } for `lh generate decide`. The choices
   // are the room's own states, so another room's pack needs nothing here.
   function buildDecision(room, now, text) {
@@ -159,11 +160,12 @@
       state: `她现在：${(now && now.label) || (now && now.state) || ''}；台灯${now && now.lamp ? '开着' : '关着'}。\n主人说：${String(text).slice(0, 200)}`,
     };
   }
-  // the model's answer → { state, lamp } (null: stay / not mentioned), or null when the answer makes no sense
-  function readDecision(res, room) {
+  // the model's answer to what the owner said (text) → { state, lamp } (null: stay / not mentioned), or null when the answer makes no sense
+  function readDecision(res, room, text = '') {
     const a = res && res.answers;
     if (!a || !a.state || !a.lamp || typeof a.state.choice !== 'string') return null;
-    const sure = (q) => (q.choice !== 'none' && Number(q.confidence) >= DECISION_MIN ? q.choice : null);
+    const min = QUESTION_RE.test(norm(text)) ? DECISION_MIN_QUESTION : DECISION_MIN;
+    const sure = (q) => (q.choice !== 'none' && Number(q.confidence) >= min ? q.choice : null);
     const state = sure(a.state);
     const lamp = sure(a.lamp);
     return { state: state && room && room.states && room.states[state] && !room.states[state].transient ? state : null, lamp: lamp === 'on' ? true : lamp === 'off' ? false : null };

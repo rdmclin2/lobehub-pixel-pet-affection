@@ -48,7 +48,8 @@ module.exports = function illustratedRoomScenario({ ROOT, OUT, FAKE_LH, step, la
     const SRC_PACK = REAL_PACK || path.join(ROOT, 'test', 'fixtures', 'games', 'her-room');
     const PACK = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-irpack-'));
     for (const f of fs.readdirSync(SRC_PACK)) fs.copyFileSync(path.join(SRC_PACK, f), path.join(PACK, f));
-    const M = { ...JSON.parse(fs.readFileSync(path.join(SRC_PACK, 'manifest.json'), 'utf8')), id: ID, name: REAL_PACK ? '她的房间' : '她的房间（小样）' };
+    // a version above the bundled catalog's (the same or a lower one would lose to it, core/game-index.js) so the store offers this test copy
+    const M = { ...JSON.parse(fs.readFileSync(path.join(SRC_PACK, 'manifest.json'), 'utf8')), id: ID, version: '99.0.0', name: REAL_PACK ? '她的房间' : '她的房间（小样）' };
     fs.writeFileSync(path.join(PACK, 'manifest.json'), JSON.stringify(M, null, 2));
     const cdn = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-ircdn-'));
     const { zip } = require(path.join(ROOT, 'scripts', 'build-character-catalog'));

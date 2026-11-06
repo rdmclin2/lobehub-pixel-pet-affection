@@ -94,6 +94,25 @@ test('the model never answers: she does not wait past the timeout, and nothing m
   assert.match(note, /没听明白/);
 });
 
+test('「玩把游戏吧」「打一把游戏」 are plain orders: they work even when the model is down', async () => {
+  const t = setup({ decide: async () => { throw new Error('down'); } });
+  for (const s of ['玩把游戏吧', '打一把游戏']) {
+    t.set({ state: 'music' });
+    await t.chat.onMessage(s);
+    assert.equal(t.room().state, 'game', s);
+  }
+  assert.equal(t.calls.length, 0);
+});
+
+test('a question is talk unless the model is very sure: 「大肥鱼，能收消息吗」 stays', async () => {
+  const t = setup({ decide: answer('phone', 'none', 0.72) });
+  await t.chat.onMessage('大肥鱼，能收消息吗');
+  assert.equal(t.room().state, 'idle');
+  const y = setup({ decide: answer('game', 'none', 0.95) });
+  await y.chat.onMessage('要不要来一把？');
+  assert.equal(y.room().state, 'game');
+});
+
 test('an unsure answer does not move her', async () => {
   const t = setup({ decide: answer('sleep', 'none', 0.45) });
   const note = await t.chat.onMessage('有点困了');

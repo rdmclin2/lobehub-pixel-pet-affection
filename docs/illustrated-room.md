@@ -78,8 +78,8 @@ DOM：标题栏胶囊 ⚡♥、「屏幕」卡片（左下，屏幕内容放大�
 设置 → 聊天（当前桌宠）─────┤→ PetService.chat / chatAs
                              │   1. roomHook(text) → core/room-chat.js onMessage：房间开着时先 matchRoomIntent
                              │   2. 明确的指令（sure）→ 立刻 illustratedCommand(from: 'chat') → game:room 推给游戏窗口，不等模型
-                             │   3. 其余的 → lh generate decide（jev，约 1 秒，超时 6 秒）判断要不要切、切到哪、开关灯，再由引擎执行；
-                             │      置信度低于 0.6 或选 none 不切；失败或超时什么都不动
+                             │   3. 其余的 → lh generate decide（jev，约 1 秒，超时 10 秒）判断要不要切、切到哪、开关灯，再由引擎执行；
+                             │      置信度低于 0.6（问句低于 0.85）或选 none 不切；失败或超时什么都不动
                              │   4. 返回提示词的 [房间·真实情况] 一行：这一轮切了没有、现在什么状态、台灯开关和有没有动过、屏幕上放什么、房间时钟
                              │   5. 同一个 agent / topic / 聊天记录跑这一轮 → say / chat-delta → 游戏窗口气泡
                              │   6. roomReplyHook(reply) → onReply：回复里说自己开灯或关灯而画面不是这样，就切台灯
