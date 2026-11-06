@@ -103,7 +103,7 @@ process.exit(spawnSync('lh', a, { stdio: 'inherit' }).status ?? 1);
         await page.waitForTimeout(4000); // let the greeting finish playing
         const role = lh('agent', 'view', agentId);
         assert.match(role, /每条单独一行/, 'her LobeHub agent has the 分段 rule');
-        fs.writeFileSync(path.join(SHOTS, 'agent-role-excerpt.txt'), role.split('\n').filter((l) => /核心是自然|发几条|每条单独一行|表情也看心情|调皮|下午三点|在吗/.test(l)).join('\n') + '\n');
+        fs.writeFileSync(path.join(SHOTS, 'agent-role-excerpt.txt'), role.split('\n').filter((l) => /核心是自然|发几条|每条单独一行|表情看心情|调皮|下午三点|在吗/.test(l)).join('\n') + '\n');
         // optional: a closer relationship stage (all-ages), the tone the 分段 rule is written for; the role follows next turn
         const aff = Number(process.argv[3] || 0);
         if (aff > 0) {
