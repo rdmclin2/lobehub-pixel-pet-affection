@@ -1,5 +1,6 @@
 'use strict';
-// 小游戏 · 页面 (docs/mini-games.md). Plays one game pack (core/game-pack.js) with PixiJS:
+// 小游戏 · 页面 (docs/mini-games.md). Plays one yard@1 game pack (core/game-pack.js) with PixiJS (a room@1 pack,
+// 像素房间, is engines/room.js's):
 //
 //   cam            the camera: pan (drag), zoom (wheel, ＋ －), follows her when ⌖ is on
 //   ├ graded       everything painted, under one colour-matrix filter = the hour × the weather (core/game-sky.js)
@@ -28,8 +29,11 @@
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const rnd = Math.random;
 
-  const boot = await window.game.boot();
+  // game-boot.js asked main once; a room@1 pack is engines/room.js's to play
+  const boot = await (window.__gameBoot || window.game.boot());
   if (!boot || !boot.game) { $('loading').textContent = '没有可以玩的小游戏，去商店 → 小游戏下载一个吧。'; return; }
+  if (boot.game.manifest && boot.game.manifest.engine !== 'yard@1') return;
+  $('loading').textContent = '正在打开小院…';
   const M = boot.game.manifest;
   const SPR = boot.game.sprites;
   const BASE = boot.game.base;

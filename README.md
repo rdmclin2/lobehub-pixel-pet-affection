@@ -464,11 +464,15 @@ npm start                         # 启动桌宠：先回答 18+ 确认，再选
 - 合规检查：`node e2e/content-sets.js` 输出全部内容条目及成人向开 / 关两种状态下的内容集合；`PIXELPET_CLEAR_JWT=1 node e2e/adversarial-live.js` 用真实 LobeHub agent 跑 4 条对抗性请求（会创建并删除一个临时 agent，消耗少量 token）。
 - 数据位置：系统用户数据目录下的 `pet.json` 与 `settings.json`（Linux 为 `~/.config/Pixel Pet Affection/`，macOS 为 `~/Library/Application Support/Pixel Pet Affection/`）；⚙ 设置 → 数据与关于 → “放生并删除 agent”会删除宠物和每位角色的 LobeHub agent（会再确认一次）。
 
-## 小游戏（像素小院）
+## 小游戏（像素小院 · 像素房间）
 
 ![像素小院：夜晚小雨，窗户与路灯亮起暖光](docs/img/mini-games/night-rain.webp)
 
 商店里可以下载的小游戏，用 PixiJS 引擎在独立窗口里玩。第一款「像素小院」是一座漂在空中的等距像素小院（美术由 GPT Image 生成），她在里面自己逛、坐长椅、浇菜收菜、摘浆果、夜里抓萤火虫，你点哪她走到哪；「天色」卡片切换清晨 / 白天 / 黄昏 / 夜晚（可让时间自己流动，一天 24 分钟）和晴朗 / 多云 / 小雨 / 雷雨 / 下雪 / 起雾；每天三件「今日小事」，完成加好感。下载：⚙ 设置 → 商店 → 小游戏；打开：托盘「小游戏」、右键她 → ⌂，或桌宠窗口里 `Ctrl/⌘ + Shift + H`。小游戏包只有图片和配置，不含代码。小游戏的源码在开源仓库 [rdmclin2/pixel-pet-mini-games](https://github.com/rdmclin2/pixel-pet-mini-games)，发了新版本商店里会提示「有更新」，一键更新、进度保留。详见 [`docs/mini-games.md`](docs/mini-games.md)。
+
+![像素房间：鲸鱼女仆的蓝色小屋](docs/img/pixel-room/room-day.webp)
+
+第二款「像素房间」：每位角色一间自己风格的房间，陪她**睡觉、工作、看手机、听音乐、打游戏**——点家具她走过去做一轮，被子、显示器、唱片、电视跟着变，做完改变她的精力、心情、专注和饱腹。本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」（浅蓝和奶白，蕾丝、蝴蝶结，她穿招牌女仆装），另外四位角色的房间可以在「换房间」里预览，即将开放。详见 [`docs/pixel-room.md`](docs/pixel-room.md)。
 
 ## 配置后台（设置窗口）
 
