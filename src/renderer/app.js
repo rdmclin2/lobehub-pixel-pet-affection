@@ -1800,7 +1800,7 @@ function updateDanceNow() {
 // (renderer/vrm.js libraryInfo) and she says it once per model and reason in this session, with where to fix it.
 const libraryHinted = new Set();
 const LIBRARY_HINT = {
-  'no-library': '（我还没有动作库，只能站着呼吸……到 设置 → 角色 → VRM 动作库 选一下动作库文件夹吧）',
+  'no-library': '（我的动作库没找到，只能站着呼吸……到 设置 → 角色 → VRM 动作库 看看吧）',
   'empty-index': '（动作库是空的，我只能站着呼吸……到 设置 → 角色 → VRM 动作库 重新选一下吧）',
   'fetch-failed': '（动作库读不出来，我先只能站着呼吸……）',
   'all-failed': '（动作库里的动作都没载入成功，我先只能站着呼吸……）',

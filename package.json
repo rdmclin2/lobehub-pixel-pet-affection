@@ -83,6 +83,18 @@
       "!**/*.pmx",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/vrm-motions",
+        "to": "vrm-motions",
+        "filter": [
+          "library.json",
+          "female/*.vrma",
+          "male/*.vrma",
+          "neutral/*.vrma"
+        ]
+      }
+    ],
     "afterSign": "scripts/mac-sign.js",
     "directories": {
       "buildResources": "build",

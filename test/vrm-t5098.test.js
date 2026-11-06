@@ -109,8 +109,10 @@ test('T-5098 jerk limit (limitAccel jMax): a 4 Hz hand flick sampled at 9–15 f
   assert.equal(BM.limitAccel(slow.times, slow.values, { jMax: 90000 }), null, 'a slow sway is not touched');
 });
 
-const LIB = path.join(os.homedir(), 'vrm-assets', 'baked-v2');
-test('T-5098 offline replay of the T-5097 moments (touches, shy / angry, celebrate, cues, lift → drop, play, talk) before the limiter: raw spike ≤ 10°/frame@30 at 30 fps and at 9–15 fps (skipped without ~/vrm-assets/baked-v2)', { skip: !fs.existsSync(path.join(LIB, 'library.json')) }, () => {
+// the library the app ships (resources/vrm-motions: always there, so CI runs it too) and, on a machine that has
+// it, the full bake
+const LIBS = [path.join(__dirname, '..', 'resources', 'vrm-motions'), path.join(os.homedir(), 'vrm-assets', 'baked-v2')].filter((d) => fs.existsSync(path.join(d, 'library.json')));
+for (const LIB of LIBS) test(`[${path.basename(LIB)}] T-5098 offline replay of the T-5097 moments (touches, shy / angry, celebrate, cues, lift → drop, play, talk) before the limiter: raw spike ≤ 10°/frame@30 at 30 fps and at 9–15 fps`, () => {
   const R = require('../scripts/lib/vrm-replay');
   const EV = { 8: [{ type: 'touch', zone: 'head', mood: 'happy' }], 18: [{ type: 'touch', zone: 'hands', mood: 'happy' }], 28: [{ type: 'touch', zone: 'belly', mood: 'happy' }], 38: [{ type: 'touch', zone: 'chest', mood: 'shy' }], 46: [{ type: 'touch', zone: 'butt', mood: 'angry' }], 54: [{ type: 'celebrate', name: 'evolve' }], 62: [{ type: 'cue', name: 'play' }], 64: [{ type: 'cue', name: 'happy' }], 70: [{ type: 'drag', what: 'lift' }], 74: [{ type: 'drag', what: 'drop' }], 84: [{ type: 'play' }], 100: [{ type: 'touch', zone: 'hands', mood: 'happy' }] };
   const hl = (t) => ({ attention: true, lift: t >= 70 && t < 74, talk: t >= 100 && t < 104 });

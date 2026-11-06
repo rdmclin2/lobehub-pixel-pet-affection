@@ -155,8 +155,10 @@ test('limiter: a smooth clip motion passes (a 30°/frame talk gesture, eased) �
 });
 
 // ---------- the offline replay over the baked library ----------
-const LIB = path.join(os.homedir(), 'vrm-assets', 'baked-v2');
-test('offline replay (real director + baked clips + renderer mixing + limiter): idle + reaction + talk on one frame, 30 fps and 9–15 fps — spike ≤ 10°/frame@30 (skipped without ~/vrm-assets/baked-v2)', { skip: !fs.existsSync(path.join(LIB, 'library.json')) }, () => {
+// the library the app ships (resources/vrm-motions: always there, so CI runs it too) and, on a machine that has
+// it, the full bake
+const LIBS = [path.join(__dirname, '..', 'resources', 'vrm-motions'), path.join(os.homedir(), 'vrm-assets', 'baked-v2')].filter((d) => fs.existsSync(path.join(d, 'library.json')));
+for (const LIB of LIBS) test(`[${path.basename(LIB)}] offline replay (real director + baked clips + renderer mixing + limiter): idle + reaction + talk on one frame, 30 fps and 9–15 fps — spike ≤ 10°/frame@30`, () => {
   const R = require('../scripts/lib/vrm-replay');
   for (const style of ['female', 'male', 'neutral']) {
     const probe = R.replay({ dir: LIB, style, seconds: 40, keepPlans: true, limiter: false, holds: () => ({ attention: true }) });
