@@ -170,7 +170,9 @@
     const rnd = Math.random;
     const scheduleSwipe = () => { st.nextSwipe = st.t + swipeEvery[0] + rnd() * (swipeEvery[1] - swipeEvery[0]); };
     scheduleSwipe();
-    const FPS = kind === 'clips' || kind === 'game' ? 24 : 12;
+    // clips from the pack's frames only change at their own rate (a swipe still redraws every tick)
+    const framed = kind === 'clips' && clips.some((c) => c.frames !== undefined);
+    const FPS = framed ? Math.max(8, (C.clips && C.clips.fps) || 12) : kind === 'clips' || kind === 'game' ? 24 : 12;
 
     // one clip in a portrait box (w × h): the whole phone screen, or the player column of a laptop's web feed
     function clipBox(i, yOff, w, h) {
@@ -452,7 +454,7 @@
         if (kind === 'player') st.pos += dt;
         if (kind === 'page') st.lastPage = ctx.query ? null : pageNow();
         if (kind === 'game') stepGame(dt);
-        if (drawn && st.acc < 1 / FPS) return false;
+        if (drawn && st.acc < 1 / FPS && !st.swipe) return false;
         st.acc = 0;
         draw(ctx);
         drawn = true;
