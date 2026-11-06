@@ -334,3 +334,5 @@ e2e `game` 用本地 http 服务当商店的 CDN 和游戏仓库的目录。安�
 - 在 Xvfb 软件渲染（SwiftShader）下大约 40–60 fps；有 GPU 的机器会更流畅。
 
 商店第二款小游戏「像素房间」（engine `room@1`）的玩法、包格式、怎么加新房间和上架验收见 [pixel-room.md](pixel-room.md)。
+
+插画版「她的房间」（engine `illustrated-room@1`，深夜雨夜的插画房间、聊天驱动状态）的方案见 [illustrated-room-design.md](illustrated-room-design.md)（T-11682）；方案落地后像素版改名「像素房间」。
