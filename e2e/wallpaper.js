@@ -90,6 +90,22 @@ module.exports = function wallpaperScenario({ ROOT, OUT, FAKE_LH, step, launch, 
     const card = (id) => admin.locator(`[data-store-game="${id}"]`);
     const state = async (id) => card(id).getAttribute('data-game-state');
     const aShot = (n) => admin.screenshot({ path: path.join(SHOTS, `${n}.png`) });
+    // the DOM of one store card / the detail page's head: its buttons (text, data-*, disabled), tags and markup
+    const domSnap = async (n, sel) => {
+      const snap = await admin.evaluate((q) => {
+        const el = document.querySelector(q);
+        if (!el) return null;
+        const attrs = (b) => Object.fromEntries([...b.attributes].filter((a) => a.name.startsWith('data-') || a.name === 'disabled' || a.name === 'type').map((a) => [a.name, a.value]));
+        return {
+          selector: q, route: location.hash,
+          buttons: [...el.querySelectorAll('button')].map((b) => ({ text: (b.textContent || '').trim(), disabled: b.disabled, attrs: attrs(b) })),
+          tags: [...el.querySelectorAll('[data-wallpaper-badge], [data-game-tag], [data-wallpaper-in-use]')].map((t) => ({ text: (t.textContent || '').trim(), attrs: attrs(t) })),
+          html: el.outerHTML.replace(/src="data:[^"]{40,}"/g, 'src="data:…"').slice(0, 6000),
+        };
+      }, sel);
+      fs.writeFileSync(path.join(SHOTS, `${n}.dom.json`), JSON.stringify(snap, null, 2));
+      return snap;
+    };
     const dialogClick = async (text) => {
       await until(async () => admin.evaluate((t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].some((b) => (b.textContent || '').trim() === t), text), 8000, `dialog button ${text}`);
       await admin.evaluate((t) => [...document.querySelectorAll('[role="dialog"] button, .ant-modal button')].filter((b) => (b.textContent || '').trim() === t).pop().click(), text);
@@ -138,6 +154,7 @@ module.exports = function wallpaperScenario({ ROOT, OUT, FAKE_LH, step, launch, 
         const label = (await admin.locator('[data-wallpaper-set="mini-wallpaper"]').innerText()).trim();
         assert.equal(label, '设为壁纸');
         await aShot('wp1-store-installed');
+        await domSnap('wp1-card-installed', '[data-store-game="mini-wallpaper"]');
         return `badge 壁纸, filter → 1 card, downloaded: ${files.join(' ')}; main button 「${label}」`;
       }, () => admin);
 
@@ -152,6 +169,7 @@ module.exports = function wallpaperScenario({ ROOT, OUT, FAKE_LH, step, launch, 
         const tip = await until(async () => admin.evaluate(() => { const t = [...document.querySelectorAll('[role="tooltip"], .ant-tooltip, [class*="tooltip"]')].find((x) => /窗口管理器/.test(x.textContent || '')); return t ? t.textContent : null; }), 6000, 'the tooltip');
         assert.match(tip, /没检测到窗口管理器/);
         await aShot('wp2-no-wm-disabled');
+        await domSnap('wp2-card-no-wm', '[data-store-game="mini-wallpaper"]');
         const d = await dbg();
         assert.equal(d.windows.length, 0);
         return `availability ${JSON.stringify(a)}; tooltip 「${tip}」; windows ${d.windows.length}`;
@@ -179,6 +197,7 @@ module.exports = function wallpaperScenario({ ROOT, OUT, FAKE_LH, step, launch, 
         await (await wallPage()).waitForFunction(() => window.__wallpaper && window.__wallpaper().ready, null, { timeout: 20000 });
         await wait(1200);
         await aShot('wp3-store-in-use');
+        await domSnap('wp3-card-in-use', '[data-store-game="mini-wallpaper"]');
         rootShot('wp3-desktop');
         keep('settingsAfterSet', d.settings);
         return `where=${d.where} mode=${d.mode}; settings.wallpaper ${JSON.stringify({ on: d.settings.on, id: d.settings.id, where: d.settings.where })}; pet window visible=false; card 「正在用作壁纸」+「退出壁纸」`;
@@ -287,10 +306,12 @@ module.exports = function wallpaperScenario({ ROOT, OUT, FAKE_LH, step, launch, 
         await admin.click('[data-game-open="mini-wallpaper"]');
         await admin.waitForSelector('[data-wallpaper-recall="mini-wallpaper"]', { timeout: 10000 });
         await aShot('wp7-detail-in-wallpaper');
+        await domSnap('wp7-detail-in-wallpaper', '[data-game-detail="mini-wallpaper"]');
         await admin.click('[data-wallpaper-recall="mini-wallpaper"]');
         await admin.waitForSelector('[data-wallpaper-return="mini-wallpaper"]', { timeout: 10000 });
         assert.equal((await dbg({ probe: false })).where, 'out');
         await aShot('wp7-detail-out');
+        await domSnap('wp7-detail-out', '[data-game-detail="mini-wallpaper"]');
         await admin.click('[data-wallpaper-return="mini-wallpaper"]');
         await admin.waitForSelector('[data-wallpaper-recall="mini-wallpaper"]', { timeout: 10000 });
         assert.equal((await dbg({ probe: false })).where, 'wallpaper');
