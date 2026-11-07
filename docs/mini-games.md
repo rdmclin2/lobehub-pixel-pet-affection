@@ -2,6 +2,7 @@
 
 > 商店里可以下载的小游戏，和她一起玩。现在有两款：「像素小院」（engine `yard@1`，本文）和「像素房间」（engine `room@1`，见 [pixel-room.md](pixel-room.md)：陪她睡觉、工作、看手机、听音乐、打游戏，本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」）。第一款「像素小院」是一座漂在空中的等距像素小院。她在院子里自己逛、做事，你可以调时段和天气，陪她完成每天的小事。
 > 引擎是 PixiJS 8（`src/renderer/vendor/pixi/`），美术由 GPT Image（gpt-image-2.5）生成后切图。小游戏包只有图片和配置，下载下来的东西不会被当作代码运行。
+> 第二款「她的房间」（engine `room@1`）的技术方案见 [her-room-design.md](her-room-design.md)。
 > 小游戏的源码在开源仓库 **<https://github.com/rdmclin2/pixel-pet-mini-games>**：改地图、玩法数值、台词、美术，在那里升版本、发布，已安装的应用就会提示更新（§9）。
 
 ![白天 · 晴朗](img/mini-games/day-clear.webp)
