@@ -24,6 +24,8 @@ const ROOT = path.resolve(__dirname, '..');
 const EXE_NAME = 'pixelpet-desktop-helper.exe';
 const DEFAULT_EXE = path.join(ROOT, 'build/win-helper', EXE_NAME);
 const MANIFEST = path.join(ROOT, 'src/main/wallpaper/helper.json');
+// @electron/asar resolves entries with the host's path separator: 'src/main/…' is not found on Windows
+const ASAR_MANIFEST = path.join('src', 'main', 'wallpaper', 'helper.json');
 // what the helper must import for the WorkerW attach (desktop-helper.c); a build missing one is not this helper
 const REQUIRED_IMPORTS = {
   'USER32.dll': ['SendMessageTimeoutW', 'SetParent', 'FindWindowExW', 'FindWindowW', 'EnumWindows', 'SetWindowPos', 'SetWindowLongPtrW', 'GetWindowLongPtrW', 'RegisterWindowMessageW', 'SystemParametersInfoW', 'SetProcessDpiAwarenessContext'],
@@ -189,7 +191,7 @@ function checkPackage(dir, buildSha) {
   if (!check(fs.existsSync(asarPath), `app.asar exists (${asarPath})`)) return;
   const asar = require('@electron/asar');
   let inAsar = null;
-  try { inAsar = JSON.parse(asar.extractFile(asarPath, 'src/main/wallpaper/helper.json').toString('utf8')); } catch (e) { check(false, `helper.json inside app.asar: ${e.message}`); return; }
+  try { inAsar = JSON.parse(asar.extractFile(asarPath, ASAR_MANIFEST).toString('utf8')); } catch (e) { check(false, `helper.json inside app.asar: ${e.message}`); return; }
   console.log(`      app.asar:src/main/wallpaper/helper.json → ${JSON.stringify({ file: inAsar.file, sha256: inAsar.sha256, size: inAsar.size })}`);
   checkSha(r.sha, inAsar, 'app.asar:src/main/wallpaper/helper.json');
   check(inAsar.file === EXE_NAME, `manifest names ${inAsar.file}`);
@@ -224,7 +226,7 @@ function checkInstaller(file) {
   if (check(fs.existsSync(got), 'exe extracted from the installer')) {
     const sha = sha256(fs.readFileSync(got));
     const asar = require('@electron/asar');
-    const m = JSON.parse(asar.extractFile(path.join(tmp, 'app/resources/app.asar'), 'src/main/wallpaper/helper.json').toString('utf8'));
+    const m = JSON.parse(asar.extractFile(path.join(tmp, 'app/resources/app.asar'), ASAR_MANIFEST).toString('utf8'));
     checkSha(sha, m, 'the installer\'s app.asar:src/main/wallpaper/helper.json');
   }
   fs.rmSync(tmp, { recursive: true, force: true });
