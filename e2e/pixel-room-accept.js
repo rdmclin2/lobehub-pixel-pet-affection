@@ -70,7 +70,7 @@ module.exports = function pixelRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: st
     const cdn0 = await cdnFetch(entry.file);
     assert.equal(cdn0.sha256, entry.sha256, `${cdn0.url} is the archive the catalog lists`);
     assert.equal(cdn0.bytes, entry.bytes);
-    const UPGRADE_FILE = 'pixel-room-1.0.1-acceptance.zip';
+    const UPGRADE_FILE = process.env.PIXELPET_ACCEPT_UPGRADE_FILE || 'pixel-room-1.0.1-acceptance.zip';
     const cdnUp = await cdnFetch(UPGRADE_FILE);
     const upWork = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-acceptv2-'));
     fs.writeFileSync(path.join(upWork, UPGRADE_FILE), cdnUp.buf);
@@ -274,7 +274,7 @@ module.exports = function pixelRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: st
         await admin.waitForTimeout(600);
         await admin.screenshot({ path: path.join(SHOTS, 'a2-store-detail.png'), fullPage: true });
         const detail = await admin.locator('[data-game-detail="pixel-room"]').innerText();
-        mark('check', '详情页：大封面、已下载 v1.0.0、开始玩、玩法要点、更新说明');
+        mark('check', `详情页：大封面、已下载 v${M.version}、开始玩、玩法要点、更新说明`);
         return JSON.stringify(obs('a2-store', { before: { state: 'remote', text: card, cover }, after: { state: stateAfter, text: cardAfter }, installedFiles: files, downloadUrl: cdn0.url, installedMatchesCdnZip: JSON.stringify(dirFiles(path.join(dataDir, 'games', 'pixel-room'))) === JSON.stringify(cdnFiles0), indexRequests: requests.slice(), detail: detail.slice(0, 600) }));
       });
 
@@ -467,7 +467,7 @@ module.exports = function pixelRoomAcceptScenario({ ROOT, OUT, FAKE_LH, step: st
         await shot('a7-restored');
         const d = await dbg();
         const after = { stats: r2.stats, last: r2.last, lastText: r2.lastText, theme: r2.theme, quests: (await g()).quests, progress: progress(), petJson: petJson(), settingsGame: d.settings.game, installed: d.games, version: (await g()).version };
-        assert.equal(after.theme, 'dafeiyu'); assert.equal(d.game, 'pixel-room'); assert.equal(after.version, '1.0.0');
+        assert.equal(after.theme, 'dafeiyu'); assert.equal(d.game, 'pixel-room'); assert.equal(after.version, M.version);
         // focus is the room's own number (the progress file): exactly kept. Energy / mood / fullness are hers
         // (pet.json) and live on in real time while the app is closed (PetService.load → resetWake.tick), so
         // they may only have drifted a little the way time moves them, never jumped back to defaults

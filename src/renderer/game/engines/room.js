@@ -234,6 +234,8 @@
   async function themeAssets(t) {
     if (themeCache.has(t.id)) return themeCache.get(t.id);
     const [bgTex, atlasTex] = await Promise.all([loadTexture(BASE + t.images.room), loadTexture(BASE + t.images.atlas)]);
+    // a painted room (theme.smooth) is scaled smoothly; only pixel art wants the default 'nearest'
+    if (t.smooth) for (const tx of [bgTex, atlasTex]) tx.source.scaleMode = 'linear';
     const index = SPRITES[t.sprites] || {};
     const cache = new Map();
     const tex = (name) => {
@@ -860,6 +862,16 @@
     const tired = f.kind && tiredFor(f.kind);
     const pal = T.def.palette || {};
     const rings = tired ? [[3, 0x6b7280], [2, 0xc7ccd3]] : [[3, colorOf('primary')], [2, parseInt(String(pal.base || '#FFFFFF').slice(1), 16)]];
+    // furniture painted into the room has a see-through sprite: its outline is its click shape
+    if (T.def.smooth && f.def.hit) {
+      const g = new P.Graphics();
+      for (const [w, col] of rings) { g.poly(f.def.hit.flat(), true).stroke({ width: w, color: col, join: 'round' }); }
+      outlineC.addChild(g);
+      if (outlineC.parent !== sorted) sorted.addChild(outlineC);
+      outlineC.zIndex = 1e5;
+      st.outline = { id: f.def.id, tone: tired ? 'tired' : 'ok', sprites: outlineC.children.length };
+      return;
+    }
     for (const [d, col] of rings) {
       const filt = silFilter(col);
       for (const [dx, dy] of [[-d, 0], [d, 0], [0, -d], [0, d], [-d, -d], [d, -d], [-d, d], [d, d]]) {
@@ -1074,6 +1086,8 @@
     if (!w) return;
     const [x, y, ww, wh] = w.rect;
     const ph = g.phase;
+    // a view painted into the room stays on a clear day; the sky takes the glass over only when it changes
+    if (w.painted && ph === 'day' && g.weather.clouds < 0.35 && !g.weather.rain && !g.weather.snow) { st.windowSky = { phase: ph, painted: true }; return; }
     const top = ph === 'night' ? 0x1b2552 : ph === 'dusk' ? 0xf0a07a : ph === 'dawn' ? 0xf6c6a8 : 0x8ec9ff;
     const bottom = ph === 'night' ? 0x34406e : ph === 'dusk' ? 0xffd2a0 : ph === 'dawn' ? 0xd9ecff : 0xd7efff;
     const arch = w.arch ? ww / 2 : 0;
@@ -1127,7 +1141,8 @@
       const a = actOf(st.run ? st.run.kind : 'sleep');
       const lie = a.lie || [s.x, s.y];
       petSprite.rotation = -Math.PI / 2 * st.poseK;
-      petSprite.scale.set(1 / RES, 1 / RES);
+      const lieK = 1 + ((a.lieScale || 1) - 1) * st.poseK;
+      petSprite.scale.set(lieK / RES, lieK / RES);
       petSprite.position.set(Math.round(s.x + (lie[0] - s.x) * st.poseK), Math.round(s.y + (lie[1] - s.y) * st.poseK));
     } else {
       petSprite.rotation = 0;

@@ -93,7 +93,7 @@ dafeiyu-sprites.json        图集索引 { 名字: { x, y, w, h } }
 ```jsonc
 {
   "schema": 1, "kind": "game", "engine": "room@1",
-  "id": "pixel-room", "name": "像素房间", "version": "1.0.0", "description": "…", "credit": "…",
+  "id": "pixel-room", "name": "像素房间", "version": "1.0.1", "description": "…", "credit": "…",
   "defaultTheme": "dafeiyu",
   // 五件事的数值：所有房间共用，主题不能改
   "activities": {
@@ -135,6 +135,7 @@ dafeiyu-sprites.json        图集索引 { 名字: { x, y, w, h } }
 ```
 
 - **活动**（`activities.<kind>`）：`seconds` 5–600；`deltas` 只能是 `energy / mood / focus / fullness`，每项 ±40 以内；`needs` 只能是 `energy`；`anim` 是她会的动作（`idle sit play pat look happy eat sleep think lookAround`）。
+- **手绘房间**：家具直接画在底图里的主题写 `smooth: true`（底图和图集平滑缩放，不走像素的 nearest），家具用透明占位精灵加 `hit` 多边形（点击范围，也是悬停描边）；`lieScale` 0.3–1 是她躺下时的大小（床在房间靠里的地方，要小一点）；`window.painted: true` 表示窗外的风景也画好了，晴天白天不盖天色，其余时候才画。大肥鱼这间由 `games/pixel-room/art/build_painted.py` 从手绘底图生成（不再走 `layout.json` 的切图）。
 - **主题里的活动**：`at` 是一件家具，`spot`（她站的位置）要在地板上（`walk.area` 内、不在 `blocked` 里）；`face` left / right；`pose: "tucked"` 是躺进被子，**必须给 `lie`**（她的脚在床上的位置；没有它她会躺在床边的地板上）；`bubble` 是台词气泡的位置（挡住显示器、电视时挪开）；`props` 最多 8 个。
 - **道具效果词表**（`props[].fx`，参数都有范围检查）：
 

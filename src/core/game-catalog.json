@@ -62,11 +62,11 @@
       "id": "pixel-room",
       "type": "game",
       "name": "像素房间",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "engine": "room@1",
       "minAppVersion": "0.28.0",
       "description": "每位角色都有一间自己风格的房间。陪她睡觉、工作、看手机、听音乐、打游戏：她会走过去做事，家具和道具跟着变，做完改变她的精力、心情、专注和饱腹。本版开放大肥鱼的「鲸鱼女仆的蓝色小屋」，另外四间即将开放。",
-      "credit": "美术：GPT Image（gpt-image-2.5）生成后像素化；玩法与引擎：Pixel Pet Affection",
+      "credit": "美术：GPT Image（gpt-image-2.5）生成的手绘房间；玩法与引擎：Pixel Pet Affection",
       "features": [
         "五件事：睡觉、工作、看手机、听音乐、打游戏",
         "她走过去做事，家具和道具跟着变",
@@ -74,7 +74,7 @@
         "五位角色各一间房，本版开放大肥鱼的蓝色小屋"
       ],
       "repo": "https://github.com/rdmclin2/pixel-pet-mini-games/tree/main/games/pixel-room",
-      "changelog": "第一版：大肥鱼的「鲸鱼女仆的蓝色小屋」——浅蓝和奶白的少女房间，蕾丝床幔、蝴蝶结、鲸鱼抱枕和鲸鱼地毯，她穿着招牌女仆装。陪她睡觉、工作、看手机、听音乐、打游戏：她走到床、书桌和电脑、床头柜上的手机、唱片机、电视和游戏机前做事，被子、显示器、唱片、电视画面跟着变，做完改变她的精力、心情、专注和饱腹。另外四位角色的房间（午后的书房、深夜的古堡房间、星星猫窝、白龙的花园卧室）可以预览，即将开放。每天三件小事，完成加好感。",
+      "changelog": "大肥鱼的房间换回手绘版：四柱蕾丝大床、窗外的海边小镇、木地板上的光影和鲸鱼地毯，家具都画在房间里；她睡觉时躺进画里的床。需要应用 0.28.0。",
       "picture": "catalog/games/pixel-room.webp",
       "screenshots": [
         {
@@ -106,9 +106,9 @@
           "caption": "换房间：五位角色各一间，另外四间即将开放"
         }
       ],
-      "file": "pixel-room-1.0.0.zip",
-      "bytes": 551302,
-      "sha256": "1e112e9c0de99cd27ca6abde96fd325effa246bf86c0a1b4aa6402e4194056d7"
+      "file": "pixel-room-1.0.1.zip",
+      "bytes": 523145,
+      "sha256": "283b72593fabb890a01712ccc5cff56ddb5c73eefb56b97bbfd420b323e3ddfc"
     },
     {
       "id": "pixel-yard",
