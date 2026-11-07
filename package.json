@@ -29,6 +29,7 @@
     "check:win-helper": "node scripts/check-win-helper.js",
     "predist:win": "npm run build:admin && node scripts/build-win-helper.js --ensure",
     "dist:win": "electron-builder --win --x64 --publish never",
+    "postdist:win": "node scripts/check-win-helper.js --package dist/win-unpacked",
     "predist:linux": "npm run build:admin",
     "dist:linux": "electron-builder --linux tar.gz --x64 --publish never",
     "catalog:build": "node scripts/build-character-catalog.js",

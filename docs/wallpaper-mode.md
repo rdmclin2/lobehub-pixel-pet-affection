@@ -60,7 +60,7 @@ Electron 侧：`win.getNativeWindowHandle()` 拿到 HWND（Buffer，x64 下用 `
 
 | 途径 | 结论 | 理由 |
 | --- | --- | --- |
-| **随应用发布的 helper exe**（选用） | ✅ 主选型 | 用纯 Win32 C 写，约 50 KB，只依赖 user32 / shell32 / wtsapi32 / kernel32 / msvcrt（系统自带）。在 Linux 上用 mingw-w64 交叉编译（`npm run build:win-helper`，CI 里是 `release.yml` 的 `win-helper` job，见 §7.5），**不走 node-gyp**，和 Electron ABI 无关，开发者本机不需要编译。它是独立进程，崩了或卡住（比如 Explorer 不回 `SendMessage`）都拖不死主进程。它自带消息循环，可以收 `TaskbarCreated`、`WM_DISPLAYCHANGE`、前台窗口变化这些事件（§1.5）。 |
+| **随应用发布的 helper exe**（选用） | ✅ 主选型 | 用纯 Win32 C 写，约 50 KB，只依赖 user32 / shell32 / wtsapi32 / kernel32 / msvcrt（系统自带）。在 Linux 上用 mingw-w64 交叉编译（`npm run build:win-helper`，CI 里是 `release.yml` `build-win` job 的 `npm run dist:win` 经 `predist:win` 编译，见 §7.5），**不走 node-gyp**，和 Electron ABI 无关，开发者本机不需要编译。它是独立进程，崩了或卡住（比如 Explorer 不回 `SendMessage`）都拖不死主进程。它自带消息循环，可以收 `TaskbarCreated`、`WM_DISPLAYCHANGE`、前台窗口变化这些事件（§1.5）。 |
 | PowerShell + `Add-Type`（P/Invoke） | ❌ 不用（只留一个开发诊断脚本） | ① 企业设备用 AppLocker / WDAC 开了 **Constrained Language Mode** 时，`Add-Type` 直接被禁。② `Add-Type` 运行时调 csc 编译，往 `%TEMP%` 写 DLL，冷启动 1–3 秒，每次都经过 AMSI 扫描。③「隐藏的 powershell.exe 用 P/Invoke 调 user32 的 SetParent / FindWindowEx」是 EDR 常见的告警特征（ATT&CK T1059.001）。④ 监听 Explorer 重启要一直挂着一个 powershell 进程（约 60 MB）。 |
 | koffi 等预编译 FFI（N-API） | ❌ 不用 | 虽然不用编译，但原生代码进了主进程：调 user32 卡住时阻塞主线程，崩溃时带走整个应用；多出约 5 MB；杀软看到的特征和 PowerShell 方案一样。 |
 
@@ -525,7 +525,11 @@ npm run check:win-helper -- --wine    # PE 结构、导入表、sha256、wine �
 - `helper.json`：`{ file, sha256, size, sources, sourceSha256, compiler }`。`sourceSha256` 是 `.c` / `.rc` / `.manifest` 的哈希（换行统一成 LF）；单测检查它与当前源码一致，改了源码忘了重编就会失败。
 - `predist:win` 跑 `build-win-helper.js --ensure`：exe 已在且与 `helper.json`、源码都对得上就保留（CI 的 Windows job 用 Linux 上编出的那个），否则重编；没有编译器也没有对得上的 exe 就让 `dist:win` 失败，不会再打出 sha256 为 `null` 的包。
 - 打包：`build.win.extraResources` 把 exe 放到 `resources/pixelpet-desktop-helper.exe`（不进 asar：asar 里的 exe 不能直接 spawn）；`helper.json` 随 `src/**` 进 `app.asar`；`desktop-helper.*` 源码不进包（`!src/main/wallpaper/helper/**`）。`main.js` 打包后从 `process.resourcesPath` 取 exe，源码运行时从 `build/win-helper/` 取。
-- CI（**尚未合入本分支**：推送 `.github/workflows/*` 需要带 `workflow` 权限的令牌，补丁见 PR #169 的评论）：`release.yml` 新增 `win-helper` job（ubuntu-24.04：装 mingw-w64 + wine → `build:win-helper` → `check-win-helper.js --wine` → 上传 exe 与 `helper.json`），`build-win` 依赖它、下载后跑 `dist:win`，打完再跑 `check-win-helper.js --package dist/win-unpacked`。`test.yml` 的 `win-helper` job 在每个 PR 上编译并在 wine 里自检。
+- CI：不改 `.github/workflows/*`，靠 npm 生命周期钩子接进现有的 `release.yml` `build-win` job（windows-latest，步骤 `npm run dist:win`）：
+  - `predist:win` → `build-win-helper.js --ensure`：仓库不提交 exe，所以 runner 上总会编译。编译器依次找 `$PIXELPET_MINGW_CC`、`x86_64-w64-mingw32-gcc`、（仅 Windows 主机）PATH 上的 `gcc`（windows-latest 镜像自带的 MinGW-w64，`C:\mingw64\bin`），并用 `gcc -dumpmachine` 确认目标是 `x86_64-w64-mingw32`。编好后把这份 exe 的 sha256 写进 `src/main/wallpaper/helper.json`，electron-builder 随后把它打进 `app.asar`，所以包里的代码记录的就是同一次构建的 exe。runner 上的 GCC 版本和 Ubuntu 的 mingw-w64 包不同，sha256 也就不同于仓库里提交的那份；这是预期行为，以包内 `helper.json` 为准。
+  - `postdist:win` → `check-win-helper.js --package dist/win-unpacked`：检查 PE 结构和导入表，确认 `resources/pixelpet-desktop-helper.exe` 存在、sha256 等于 `app.asar` 里的 `helper.json`，任一项不符就让该 job 失败。
+  - 想在没有发版的情况下验证，可以手动触发 `release.yml`，不填 version（只构建不发版）：`gh workflow run release.yml --ref <分支>`。
+  - 另有一份可选补丁，给 `test.yml` / `release.yml` 加独立的 Linux `win-helper` job（mingw-w64 + wine 自检），贴在 PR #169 的评论里。它不是上面这条构建链的前提；推送 workflow 文件需要带 `workflow` 权限的令牌。
 - 校验脚本 `scripts/check-win-helper.js` 自己解析 PE（不依赖 objdump，Windows runner 上也能跑）：PE32+、AMD64、CUI 子系统、ASLR / NX、时间戳 0；导入表必须有 `SendMessageTimeoutW` `SetParent` `FindWindowExW` `FindWindowW` `EnumWindows` `SetWindowPos` `SetWindowLongPtrW` 等，不能有钩子 / 注入 / 网络 API，也不能依赖 libgcc 之类需要另带的 DLL；清单是 `asInvoker` + `PerMonitorV2`，版本资源写着「Pixel Pet 桌面壁纸助手」。`--package` 检查 `resources/` 里的 exe 与 `app.asar` 里 `helper.json` 的 sha256 一致、asar 里没有 exe、`resources/` 里没有另一份 `helper.json`；`--installer` 用 7-Zip 从 NSIS 安装包里取出 exe 再比一次。
 - 单测 `test/wallpaper-win-helper.test.js`：sha256 对得上才 spawn；改一个字节 → `helper-tampered`、不 spawn，「设为壁纸」返回同一原因；`resources/` 里放一份配套的假 `helper.json` 也没用（期望值只从代码里来）；exe 不在 / sha256 为空或格式不对 → `helper-missing`；运行中 exe 被换掉、helper 崩溃后自动重启时再校验一次，拒绝启动并进入 `dead`；`helper.json` 与源码一致；打包配置。把 `win-helper.js` 里的比对删掉，前两条和重启那条会失败（反向对照）。
 

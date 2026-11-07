@@ -9,7 +9,9 @@
 //                                       source (the CI Windows job downloads the one built on Linux); otherwise
 //                                       compile; with no compiler and no matching exe: fail, never ship sha256 null
 //
-// Compiler: $PIXELPET_MINGW_CC or x86_64-w64-mingw32-gcc (Ubuntu: apt-get install gcc-mingw-w64-x86-64).
+// Compiler: $PIXELPET_MINGW_CC, else x86_64-w64-mingw32-gcc (Ubuntu: apt-get install gcc-mingw-w64-x86-64), else on a
+// Windows host the MinGW-w64 gcc on PATH (GitHub's windows-latest image ships one in C:\mingw64\bin): the release
+// workflow's build-win job runs `npm run dist:win`, whose predist:win compiles the helper and stamps helper.json there.
 // Reproducible: no PE timestamp, no build id, stripped, source paths mapped — the same mingw-w64 package gives the same
 // bytes, so the sha256 committed in helper.json can be rebuilt and compared (scripts/check-win-helper.js).
 // The main process (src/main/wallpaper/win-helper.js) hashes the exe before every start and refuses any other file.
@@ -29,8 +31,10 @@ const MANIFEST = path.join(ROOT, 'src/main/wallpaper/helper.json');
 const OUT_DIR = path.join(ROOT, 'build/win-helper');
 const EXE_NAME = 'pixelpet-desktop-helper.exe';
 const EXE = path.join(OUT_DIR, EXE_NAME);
-const CC = process.env.PIXELPET_MINGW_CC || 'x86_64-w64-mingw32-gcc';
-const WINDRES = process.env.PIXELPET_MINGW_WINDRES || CC.replace(/gcc(\.exe)?$/, 'windres$1');
+const CC_CANDIDATES = process.env.PIXELPET_MINGW_CC
+  ? [process.env.PIXELPET_MINGW_CC]
+  : ['x86_64-w64-mingw32-gcc', ...(process.platform === 'win32' ? ['gcc'] : [])];
+const windresFor = (cc) => process.env.PIXELPET_MINGW_WINDRES || cc.replace(/gcc(\.exe)?$/, 'windres$1');
 
 const FLAGS = [
   '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -51,13 +55,27 @@ function sourceSha() {
 }
 const readManifest = () => { try { return JSON.parse(fs.readFileSync(MANIFEST, 'utf8')); } catch { return null; } };
 
-function compilerVersion() {
-  try { return execFileSync(CC, ['--version'], { encoding: 'utf8' }).split('\n')[0].trim(); } catch { return null; }
+function versionOf(cmd) {
+  try { return execFileSync(cmd, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0].trim(); } catch { return null; }
+}
+// first candidate that answers --version and targets Windows x64 (`gcc -dumpmachine` = x86_64-w64-mingw32)
+function findCompiler() {
+  for (const cc of CC_CANDIDATES) {
+    const version = versionOf(cc);
+    if (!version) continue;
+    let machine = '';
+    try { machine = execFileSync(cc, ['-dumpmachine'], { encoding: 'utf8' }).trim(); } catch { /* keep '' */ }
+    if (!/^x86_64-w64-mingw32/.test(machine)) { console.log(`win helper: skipping ${cc} (targets ${machine || '?'})`); continue; }
+    return { cc, windres: windresFor(cc), version };
+  }
+  return null;
 }
 
 function compile() {
-  const version = compilerVersion();
-  if (!version) throw new Error(`no mingw-w64 compiler (${CC}); install gcc-mingw-w64-x86-64 or set PIXELPET_MINGW_CC`);
+  const found = findCompiler();
+  if (!found) throw new Error(`no mingw-w64 compiler (${CC_CANDIDATES.join(', ')}); install gcc-mingw-w64-x86-64 or set PIXELPET_MINGW_CC`);
+  const { cc: CC, windres: WINDRES, version } = found;
+  console.log(`win helper: compiler ${CC} (${version}), resource compiler ${WINDRES}`);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const res = path.join(OUT_DIR, 'desktop-helper.res.o');
   // relative paths: the bytes do not depend on where the repo is checked out (plus -ffile-prefix-map for the C)
