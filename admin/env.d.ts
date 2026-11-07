@@ -36,3 +36,11 @@ declare module '*/core/update-auto.js' {
   };
   export default auto;
 }
+
+// src/core/store-updates-text.js (UMD): 检查更新's toast, by kind — 小游戏 / 壁纸 (T-13654 D7)
+declare module '*/core/store-updates-text.js' {
+  const text: {
+    updatesText: (rows: ReadonlyArray<{ kind?: string; state?: string }> | null | undefined) => string | null;
+  };
+  export default text;
+}

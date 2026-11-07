@@ -261,7 +261,7 @@ class WallpaperHost {
       clip: WS.walkClip(display, this.pack.wallpaper.canvas, this.pack.wallpaper.canvas.fit, this.pack.wallpaper.canvas.focus),
       pet: here && this.where !== 'out' && this.where !== 'game' ? { visible: true, at: this.enterAt || null } : { visible: false },
       fps: w ? (w.fps ? w.fps.fps : WPower.frameRate(this._signalsFor(did), this.prefs(), this.pack.wallpaper.power).fps) : 1,
-      staticShot: did === 'static', view, scene, testMode: this.testMode,
+      staticShot: did === 'static', view, scene: WS.wallpaperScene(scene), testMode: this.testMode,
     };
   }
 
@@ -273,6 +273,13 @@ class WallpaperHost {
     // ready: the page listens now — send it the frame rate again even if it did not change
     if (msg.type === 'ready' && w) { w.ready = true; w.fps = null; this._power(); }
     if (msg.type === 'visibility' && w) { w.hidden = !!msg.hidden; this._power(); }
+    // the page's WebGL renderer: drawn by the CPU (no GPU) → lower resolution and frame rate (core/wallpaper-power.js)
+    if (msg.type === 'render' && w) {
+      w.render = { ...WPower.renderPlan(msg.renderer), renderer: typeof msg.renderer === 'string' ? msg.renderer.slice(0, 200) : null };
+      this._note('render', { software: w.render.software, renderer: w.render.renderer });
+      if (!w.win.isDestroyed()) w.win.webContents.send('wallpaper:render', { software: w.render.software, scale: w.render.scale });
+      this._power();
+    }
     if (msg.type === 'pet' && String(did) === String(this.petDisplay) && Array.isArray(msg.at) && msg.at.every(Number.isFinite)) this.petPos = [msg.at[0], msg.at[1]];
     return true;
   }
@@ -458,7 +465,7 @@ class WallpaperHost {
     // monitor name the helper sent, 'test' from the e2e) — those count for every display — or the page hidden
     const c = this.signals.covered;
     const any = Object.entries(c).some(([k, v]) => v && (k === String(did) || !this.wins.has(k)));
-    return { ...this.signals, covered: !!(any || (w && w.hidden)), out: this.signals.out };
+    return { ...this.signals, covered: !!(any || (w && w.hidden)), out: this.signals.out, software: !!(w && w.render && w.render.software) };
   }
   _power() {
     if (!this.pack) return;
@@ -620,6 +627,10 @@ class WallpaperHost {
     return n;
   }
 
+  // settings.scene changed: the pages get the wallpaper's own scene (the clock's hour, the chosen weather)
+  sceneChanged(scene) {
+    for (const [, w] of this.wins) if (!w.win.isDestroyed()) w.win.webContents.send('wallpaper:settings', { scene: WS.wallpaperScene(scene) });
+  }
   // settings.wallpaper changed (设置 → 桌宠行为 → 桌面壁纸): frame rate, displays, the hotkey follow at once
   settingsChanged() {
     if (!this.active) return;
@@ -657,7 +668,7 @@ class WallpaperHost {
     for (const [did, w] of this.wins) {
       const alive = !w.win.isDestroyed();
       wins.push({
-        display: did, alive, attached: w.attached, layout: w.layout || null, ready: w.ready, hidden: w.hidden, fps: w.fps,
+        display: did, alive, attached: w.attached, layout: w.layout || null, ready: w.ready, hidden: w.hidden, fps: w.fps, render: w.render || null,
         bounds: alive ? w.win.getBounds() : null, visible: alive ? w.win.isVisible() : false, focused: alive ? w.win.isFocused() : false,
         // what we asked of the window (Electron has no getter for setIgnoreMouseEvents); the X input shape in probe says what X did
         ignoreMouse: w.ignoreMouse !== false, title: alive ? w.win.getTitle() : null,

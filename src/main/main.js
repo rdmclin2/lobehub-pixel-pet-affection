@@ -1536,7 +1536,7 @@ function wire() {
   service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); if (scene) scene.send('game:settings', { scene: service.settings.scene, roam: service.settings.prefs.roam }); });
   // her look changed (another character, an outfit): the game redraws her
   service.on('update', (v) => { if (scene && v) scene.send('game:view', v); if (wallpaper && v) for (const w of wallpaper.wins.values()) if (!w.win.isDestroyed()) w.win.webContents.send('wallpaper:view', v); });
-  service.on('settings', () => { if (!wallpaper) return; for (const w of wallpaper.wins.values()) if (!w.win.isDestroyed()) w.win.webContents.send('wallpaper:settings', { scene: service.settings.scene }); wallpaper.settingsChanged(); });
+  service.on('settings', () => { if (!wallpaper) return; wallpaper.sceneChanged(service.settings.scene); wallpaper.settingsChanged(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);

@@ -38,6 +38,11 @@ function compareVersions(a, b) {
 }
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+// 特色 (store.json features): whole sentences. The detail page puts each on one line and cuts it there with an
+// ellipsis + the full text on hover (T-13654 D6), so the index keeps the full text; only a runaway one is capped,
+// and then visibly (…) — not cut mid-word into something that reads complete, as the old 40-character slice did.
+const FEATURE_MAX = 160;
+const feature = (f) => (f.length > FEATURE_MAX ? `${f.slice(0, FEATURE_MAX - 1)}…` : f);
 // one entry, cleaned: anything malformed is dropped (null); unknown fields are not carried
 function cleanEntry(g, release, { bundled = false } = {}) {
   if (!g || typeof g !== 'object' || g.type !== 'game' || !GP.ID_RE.test(String(g.id))) return null;
@@ -53,7 +58,7 @@ function cleanEntry(g, release, { bundled = false } = {}) {
     id: g.id, type: 'game', name: str(g.name, 40), version: g.version, engine: str(g.engine, 20) || 'yard@1',
     minAppVersion: VER_RE.test(String(g.minAppVersion)) ? g.minAppVersion : null,
     description: str(g.description, 400), credit: str(g.credit, 200),
-    features: Array.isArray(g.features) ? g.features.filter((f) => typeof f === 'string').slice(0, 8).map((f) => f.slice(0, 40)) : [],
+    features: Array.isArray(g.features) ? g.features.filter((f) => typeof f === 'string').slice(0, 8).map(feature) : [],
     repo: typeof g.repo === 'string' && REPO_RE.test(g.repo) ? g.repo : REPO_URL,
     changelog: str(g.changelog, 2000), picture, screenshots,
     file: g.file, bytes: g.bytes, sha256: g.sha256, release,
@@ -133,4 +138,4 @@ function updates(index, installed, ctx = {}) {
     .map((g) => ({ id: g.id, name: g.name, from: installed.get(g.id), to: g.version, changelog: g.changelog }));
 }
 
-module.exports = { WALLPAPER_MAX_BYTES, BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };
+module.exports = { FEATURE_MAX, WALLPAPER_MAX_BYTES, BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };

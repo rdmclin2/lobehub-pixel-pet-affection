@@ -26,6 +26,33 @@ test('frame rate: normal = min(settings, pack); battery → batteryFps; covered 
   assert.equal(WPower.frameRate({}, { fps: 999 }, { fps: 999 }).fps, 30);
 });
 
+test('no GPU (T-13654 D3): a software WebGL renderer caps the frame rate at 10 and halves the resolution; battery / covered / game still apply on top; a GPU keeps 24 at full resolution', () => {
+  const soft = 'ANGLE (Mesa; llvmpipe (LLVM 20.1.2 256 bits); OpenGL 4.5)';
+  for (const r of [soft, 'ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', 'Google SwiftShader', 'ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)', 'Apple Software Renderer', 'softpipe', 'lavapipe']) {
+    assert.equal(WPower.isSoftwareRenderer(r), true, r);
+    assert.deepEqual(WPower.renderPlan(r), { software: true, scale: 0.5 }, r);
+  }
+  for (const r of ['ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002503) Direct3D11 vs_5_0 ps_5_0, D3D11)', 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2, Unspecified Version)', 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)', 'AMD Radeon RX 6600', '', null, undefined, 42]) {
+    assert.equal(WPower.isSoftwareRenderer(r), false, String(r));
+    assert.deepEqual(WPower.renderPlan(r), { software: false, scale: 1 }, String(r));
+  }
+  assert.deepEqual(WPower.frameRate({ software: true }, prefs, { fps: 24 }), { fps: 10, why: 'software' });
+  assert.deepEqual(WPower.frameRate({ software: false }, prefs, { fps: 24 }), { fps: 24, why: 'normal' }, 'a GPU: the pack\'s 24');
+  assert.deepEqual(WPower.frameRate({ software: true }, { ...prefs, fps: 6 }, { fps: 24 }), { fps: 6, why: 'normal' }, 'a lower 帧率上限 still wins');
+  assert.deepEqual(WPower.frameRate({ software: true, onBattery: true }, { ...prefs, batteryFps: 5 }, { fps: 24 }), { fps: 5, why: 'battery' }, 'battery below the software cap');
+  assert.deepEqual(WPower.frameRate({ software: true, onBattery: true }, prefs, { fps: 24 }), { fps: 10, why: 'battery' });
+  assert.deepEqual(WPower.frameRate({ software: true, covered: true }, prefs, { fps: 24 }), { fps: 0, why: 'covered' });
+  assert.deepEqual(WPower.frameRate({ software: true, inGame: true }, prefs, { fps: 24 }), { fps: 0, why: 'game' });
+  assert.deepEqual(WPower.frameRate({ software: true, out: true }, prefs, { fps: 24 }), { fps: 10, why: 'software' });
+});
+
+test('the wallpaper\'s time of day is the computer clock (T-13654 D4): the mini games\' 24-minute day / fixed hour never reach it; the weather does', () => {
+  const games = { followClock: false, dayFlow: true, hour: 8, weather: 'rain', autoWeather: false, game: 'yard' };
+  assert.deepEqual(WS.wallpaperScene(games), { followClock: true, dayFlow: false, hour: 8, weather: 'rain' });
+  assert.equal(WS.wallpaperScene({ followClock: false, dayFlow: false, hour: 3 }).followClock, true);
+  assert.deepEqual(WS.wallpaperScene(null), { followClock: true, dayFlow: false, hour: 12, weather: 'clear' });
+});
+
 test('where she is: desktop → wallpaper → out → wallpaper; a game from wallpaper / out comes back into the wallpaper; exit from anywhere', () => {
   assert.deepEqual(WS.move('desktop', 'enter'), { ok: true, from: 'desktop', where: 'wallpaper', pet: 'hide', wall: 'open' });
   assert.deepEqual(WS.move('wallpaper', 'recall'), { ok: true, from: 'wallpaper', where: 'out', pet: 'show', wall: 'fade-out' });

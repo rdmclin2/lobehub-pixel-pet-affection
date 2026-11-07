@@ -235,6 +235,7 @@ desktop ──设为壁纸──▶ wallpaper ──叫她出来──▶ out �
 | 被全屏遮挡 | Windows：helper 每 2 秒查一次，同时监听 `EVENT_SYSTEM_FOREGROUND`；`SHQueryUserNotificationState` ∈ {`QUNS_BUSY`, `QUNS_RUNNING_D3D_FULL_SCREEN`, `QUNS_PRESENTATION_MODE`}，或者前台窗口的矩形覆盖了壁纸所在的显示器，或者最大化窗口覆盖了该显示器 ≥ 95%（前台窗口是 Progman/WorkerW 时不算）。macOS：页面的 `document.visibilityState === 'hidden'`，来自 Chromium 的 NSWindow occlusion。Linux X11：页面 visibility；系统有 `xprop` 时，再每 3 秒查一次 `_NET_ACTIVE_WINDOW` 是否带 `_NET_WM_STATE_FULLSCREEN` | 0（暂停，保留最后一帧） |
 | 锁屏 / 休眠 / 显示器睡眠 | `lock-screen`、`suspend`，macOS 另有 `user-did-resign-active`（切换用户） | 0 |
 | 她去玩小游戏 | 小游戏窗口打开 | 0 |
+| 没有 GPU（软件渲染，T-13654 D3） | 页面 WebGL 的 `UNMASKED_RENDERER_WEBGL` 是 SwiftShader / llvmpipe / softpipe / lavapipe / Basic Render Driver / Apple Software Renderer（`core/wallpaper-power.js` `isSoftwareRenderer`） | `min(上面的结果, 10)`，并以一半分辨率绘制、时段调色换成色调（§7.7）；电池 / 遮挡 / 锁屏照常叠加 |
 | 恢复 | 以上条件都消失 | 先立即画 1 帧，再回到对应的帧率 |
 
 - 主进程把这些信号合成一个 `fps`，计算放在一个纯函数里（`core/wallpaper-power.js`，可单测），通过 `wallpaper:power` 发给页面。页面设 Pixi `ticker.maxFPS`，fps 为 0 时 `ticker.stop()`。探针 P5 验证过这条控制链：2 秒内上限 30 时 60 帧、上限 15 时 30 帧、暂停时 0 帧。
@@ -307,7 +308,7 @@ desktop ──设为壁纸──▶ wallpaper ──叫她出来──▶ out �
 | `layers[].opacity` | number | — | 0–1 |
 | `layers[].blend` | `"normal"` \| `"add"` \| `"screen"` \| `"multiply"` | — | 默认 `normal` |
 | `layers[].phases` | string[] | — | ⊆ `dawn` `day` `dusk` `night`，只在这些时段显示（切换时淡入淡出） |
-| `sky.phases` | boolean | — | 跟随时段（`game-sky` 调色），时刻用 `settings.scene` 的 `followClock` / `dayFlow` |
+| `sky.phases` | boolean | — | 跟随时段（`game-sky` 调色）；壁纸的时刻始终是电脑本地时钟（`wallpaper-state.js` `wallpaperScene`，§7.7），不用小游戏 `settings.scene` 的「随时间流动」/ 时刻，天气仍取 `settings.scene.weather` |
 | `sky.weather` | string[] | — | ⊆ `clear` `cloudy` `rain` `storm` `snow` `fog`，自动天气只从这些里选 |
 | `sky.tint` | boolean | — | 整体套用时段色矩阵 |
 | `fx.rain` / `fx.snow` | boolean | — | 允许下雨 / 下雪的屏幕效果 |
@@ -559,3 +560,27 @@ npm run check:win-helper -- --wine    # PE 结构、导入表、sha256、wine �
 | W9 | 任一台 | 退出壁纸；再「设为壁纸」后直接退出应用（托盘 → 退出） | 退出后系统壁纸重新画出，没有残留最后一帧；退出应用时 helper 进程随之结束（任务管理器里没有残留 `pixelpet-desktop-helper.exe`） |
 | W10 | 任一台 | 把 `resources\pixelpet-desktop-helper.exe` 换成别的 exe（或改一个字节），再点「设为壁纸」 | 不启动该文件；按钮提示原因 `helper-tampered`；删掉文件时为 `helper-missing` |
 
+
+### 7.7 T-13654 验收后的应用侧修复：D3 / D4 / D6 / D7（T-13661）
+
+验收报告（https://lobehub.com/acceptance/d72e0aac-ad78-4adf-8b30-1f17d01f94ba）列出的四个应用侧缺陷。每项都有修复前失败、修复后通过的回归测试（单测 + e2e `wallpaper` 场景的步骤）。
+
+| 缺陷 | 原因 | 修复 | 回归 |
+| --- | --- | --- | --- |
+| **D3** 没有 GPU 时 24 帧壁纸占约 4 核 | 软件 GL（llvmpipe / SwiftShader）下每帧由 CPU 画：整屏的 `ColorMatrixFilter` 是额外的一次离屏渲染（约占一半），其余是 1600×900 的像素填充，都在 GPU 进程里 | 页面启动后把 WebGL 的 `UNMASKED_RENDERER_WEBGL` 报给主进程（`wallpaper:report {type:'render'}`）；`core/wallpaper-power.js` 的 `renderPlan` / `isSoftwareRenderer` 判定软件渲染 → 主进程回 `wallpaper:render {scale: 0.5}`，帧率信号加 `software`：`min(原结果, 10)`，`why: 'software'`。页面以一半分辨率绘制（CSS 拉回全屏），时段调色改成容器 `tint`（通道乘数 + lift，不做饱和度），省掉整屏滤镜 | `test/wallpaper-state.test.js`、`test/wallpaper-host.test.js`（软件 / GPU 两种渲染器）；e2e WP6、WP8 |
+| **D4** 壁纸沿用小游戏的 24 分钟一天 | 壁纸页面直接拿 `settings.scene`（默认 `dayFlow:true, hour:8`） | `core/wallpaper-state.js` `wallpaperScene()`：壁纸的时刻永远是电脑本地时钟，只沿用 `settings.scene.weather`；`host.bootFor()` 与 `host.sceneChanged()`（设置变化时）都只发它。壁纸不提供手动调时段，和商店文案「时段跟着电脑时钟」一致 | 单测同上；e2e WP6b（小游戏改成固定 3:00 后壁纸仍是时钟时刻） |
+| **D6** 详情页特色标签截断无省略号 | `core/game-index.js` 把每条 `features` 切到 40 字（看起来像排版截断，后半句根本没到界面）；标签本身也没有溢出处理 | 索引保留整句（上限 `FEATURE_MAX = 160`，超出以「…」结尾）；详情页每条是 `Tag` + `Text ellipsis={{ tooltip, tooltipWhenOverflow: true }}`：放不下时单行省略号、悬停出整句，放得下不出提示。走 lobe-design 70-detail（X-2.1）→ 80-review，`lint-lobe` 0 FAIL；记为项目规则 R-07 | `test/game-index.test.js`；e2e WP12 |
+| **D7** 可更新提示把壁纸叫「小游戏」 | toast 写死「有 N 个小游戏可以更新」 | `src/core/store-updates-text.js`（UMD，设置窗口与单测共用）按 kind 计数：「有 1 个壁纸可以更新」「有 2 个小游戏可以更新」「有 1 个小游戏和 1 个壁纸可以更新」。界面只有 zh-CN，其余写死「小游戏」的位置都是小游戏专属文案 | `test/store-updates-text.test.js`；e2e WP13 |
+
+**GPU 机器上的策略**：渲染器字符串不是软件渲染（NVIDIA / AMD / Intel / Apple Metal 等，或读不到）时什么都不变：`min(设置, 包)`（海边露台为 24 帧）、全分辨率、完整的调色矩阵。电池（`batteryFps`）、被遮挡 / 锁屏 / 休眠 / 小游戏（0 帧）、叫她出来（15 帧）照常叠加，两种渲染都适用；软件渲染时电池帧率若低于 10 仍以电池为准。设置里「硬件加速」关掉时 Chromium 会改用 SwiftShader，也会走软件策略。真实 GPU 上的 CPU / 帧率仍需按 §6.2 的真机矩阵复测（本机只有 llvmpipe）。
+
+**CPU 采样**（`scripts/wallpaper-cpu-bench.js`，与 T-13654 同条件：Xvfb 1600×900 + openbox，无 GPU，Electron 报告的渲染器是 `ANGLE (Mesa, llvmpipe (LLVM 20.1.2 256 bits), OpenGL 4.5)`；AMD Ryzen 5 3600，12 线程；真实包「海边露台」1.0.0；整棵进程树 `/proc/<pid>/stat` 每 15 秒一次，每段 120 秒，100% = 1 个核）：
+
+| 状态 | 修复前（fc72083） | 修复后 |
+| --- | --- | --- |
+| 正常 | **385.2%**（307–436），上限 24 帧，`gpu-process` ≈ 380% | **68.6%**（67.2–70.0），上限 10 帧 `software`，画布 800×450 |
+| 用电池 | 191.2%（152–205），10 帧 | 67.6%（66.6–69.0），10 帧 `battery` |
+| 被遮挡 | 2.6%，0 帧 | 2.7%，0 帧 |
+| 正常 · 夜里（`WP_HOUR=22`，灯串 / 灯塔亮着） | — | 60.7%（49.9–68.1） |
+
+T-13654 原报告同条件下是 434.5% / 205.9% / 2.7%。复现：`xvfb-run -a -s "-screen 0 1600x900x24" node scripts/wallpaper-cpu-bench.js <包目录> <输出目录> <标签>`（`SEG_S` / `SAMPLE_S` / `SEGMENTS` / `WP_HOUR` 见脚本头）。

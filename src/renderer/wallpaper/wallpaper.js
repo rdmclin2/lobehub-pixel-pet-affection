@@ -23,12 +23,17 @@
   const st = { ready: false, frames: 0, fps: 0, maxFps: 30, why: 'boot', t: 0, hour: 12, clicks: 0, error: null, pet: { visible: false, alpha: 0, target: 0 }, sprite: null, phase: 'day', lastReport: 0 };
   addEventListener('mousedown', () => { st.clicks += 1; });
   window.__wallpaper = () => ({
-    ready: st.ready, frames: st.frames, fps: st.fps, maxFps: st.maxFps, why: st.why, hour: st.hour, phase: st.phase, clicks: st.clicks, error: st.error,
+    ready: st.ready, frames: st.frames, fps: st.fps, maxFps: st.maxFps, why: st.why, render: renderInfo(), hour: st.hour, phase: st.phase, clicks: st.clicks, error: st.error,
     size: { w: innerWidth, h: innerHeight }, hidden: document.visibilityState === 'hidden',
     layers: layers.map((l) => ({ id: l.def.id, z: l.def.z, alpha: Math.round(l.node.alpha * 100) / 100, x: Math.round(l.node.x) })),
     pet: pet ? { ...pet.state(), visible: st.pet.visible, alpha: Math.round(st.pet.alpha * 100) / 100, kind: st.sprite ? st.sprite.kind : null } : null,
     fit: fitNow, clip: boot && boot.clip,
   });
+
+  // (app is made below; the e2e may ask before that)
+  function renderInfo() {
+    try { return { ...st.render, resolution: app.renderer.resolution, canvas: [app.canvas.width, app.canvas.height] }; } catch { return st.render || null; }
+  }
 
   const boot = await window.wallpaper.boot();
   const layers = [];
@@ -46,6 +51,16 @@
   await app.init({ resizeTo: document.getElementById('stage'), background: C.background, antialias: false, resolution: 1, preference: 'webgl', powerPreference: 'low-power', preserveDrawingBuffer: !!boot.staticShot });
   document.getElementById('stage').appendChild(app.canvas);
   app.ticker.maxFPS = boot.fps || 30;
+  // who draws: a GPU, or the CPU (SwiftShader / llvmpipe …)? Main decides (core/wallpaper-power.js renderPlan) and
+  // answers with wallpaper:render (the resolution) and wallpaper:power (the frame cap)
+  st.render = { renderer: null, software: false, scale: 1 };
+  try {
+    const gl = app.renderer.gl;
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    st.render.renderer = gl ? String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER)) : `no-webgl:${app.renderer.name || app.renderer.type}`;
+  } catch (e) {
+    st.render.renderer = `unknown:${e && e.message}`;
+  }
 
   const world = new P.Container();
   const graded = new P.Container();
@@ -233,7 +248,8 @@
   fit();
   addEventListener('resize', fit);
 
-  // ---- time of day (settings.scene: 对齐本机时间 / 随时间流动 / 时刻) ---------------------------------------
+  // ---- time of day: the computer's clock (main sends core/wallpaper-state.js wallpaperScene, not the mini games' ----
+  // settings.scene); followClock off is only for a scene handed in by hand
   const scene = { followClock: true, dayFlow: false, hour: 12, weather: 'clear', ...(boot.scene || {}) };
   let forcedHour = null;
   st.hour = scene.followClock ? SKY.clockHour() : scene.hour;
@@ -244,6 +260,11 @@
     return scene.hour;
   }
   const weather = M.sky.weather.includes(scene.weather) ? scene.weather : M.sky.weather[0];
+
+  // drawn by the CPU: the colour matrix is a second full-screen pass every frame (about half the cost there), so the
+  // hour's grade becomes a plain tint (its channel multiply, no saturation / lift) on the layers instead
+  const ch = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255);
+  const tintOf = (g) => (ch(g.mul[0] + g.lift) << 16) | (ch(g.mul[1] + g.lift) << 8) | ch(g.mul[2] + g.lift);
 
   // ---- the frame ---------------------------------------------------------------------------------------------
   let fpsN = 0;
@@ -257,7 +278,8 @@
     st.hour = hourNow(dt);
     const g = SKY.grade(st.hour, SKY.mixWeather(weather, weather, 1));
     st.phase = g.phase;
-    if (M.sky.tint) grade.matrix = SKY.gradeMatrix(g);
+    if (M.sky.tint && st.render.software) graded.tint = tintOf(g);
+    else if (M.sky.tint) grade.matrix = SKY.gradeMatrix(g);
     for (const l of layers) {
       const want = l.def.phases ? (l.def.phases.includes(g.phase) ? l.def.opacity : 0) : l.def.opacity;
       l.node.alpha += (want - l.node.alpha) * Math.min(1, dt * 1.5);
@@ -305,6 +327,17 @@
     if (!app.ticker.started) { app.ticker.start(); app.render(); }
   }
   window.wallpaper.onPower(setFps);
+  // drawn by the CPU: fewer pixels (the canvas is stretched back over the window by CSS)
+  window.wallpaper.onRender((r) => {
+    if (!r || !(r.scale > 0) || r.scale > 1) return;
+    st.render = { ...st.render, software: !!r.software, scale: r.scale };
+    if (M.sky.tint) { graded.filters = r.software ? null : [grade]; if (!r.software) graded.tint = 0xffffff; }
+    if (app.renderer.resolution === r.scale) { app.render(); return; }
+    app.renderer.resolution = r.scale;
+    app.resize();
+    fit();
+    app.render();
+  });
   window.wallpaper.onPet((p) => {
     if (p.visible) {
       if (!pet || p.at) makePet(p.at || null);
@@ -323,5 +356,6 @@
   st.ready = true;
   frame(0);
   app.render();
+  window.wallpaper.report({ type: 'render', renderer: st.render.renderer });
   window.wallpaper.report({ type: 'ready' });
 })();

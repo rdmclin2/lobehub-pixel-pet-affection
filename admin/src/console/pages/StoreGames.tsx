@@ -24,6 +24,7 @@ import { Check, ChevronLeft, ChevronRight, Download, Gamepad2, LogOut, MonitorDo
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import { api, type DownloadProgress, type GameProgress, type GameStoreState, type StoreGameRow, type WallpaperResult, type WallpaperState } from "../api";
+import StoreUpdatesText from "../../../../src/core/store-updates-text.js";
 import { ask } from "../fields";
 import { downloading, storeStyles } from "./Characters";
 
@@ -147,6 +148,16 @@ const styles = createStaticStyles(({ css }) => ({
     @media (width <= 860px) {
       grid-template-columns: minmax(0, 1fr);
     }
+  `,
+  // a feature (store.json features) longer than the column: one line, cut with an ellipsis, the whole sentence on
+  // hover (Text shows its tooltip only when the line really is cut) — T-13654 D6
+  feature: css`
+    overflow: hidden;
+    max-width: 100%;
+  `,
+  featureText: css`
+    font-size: inherit;
+    color: inherit;
   `,
   notes: css`
     white-space: pre-wrap;
@@ -433,9 +444,9 @@ export const GamesShelf = () => {
     setChecking(true);
     const r = await load(true);
     setChecking(false);
-    const ups = r.games.filter((g) => g.state === "update");
+    const ups = StoreUpdatesText.updatesText(r.games);
     if (r.checkError) toast.error({ description: "请检查网络后再试。", title: "没能检查新版本" });
-    else if (ups.length) toast.info(`有 ${ups.length} 个小游戏可以更新`);
+    else if (ups) toast.info(ups);
     else toast.success("都是最新版本");
   };
   if (!st) return null;
@@ -617,7 +628,11 @@ export const GameDetailPage = ({ id }: { id: string }) => {
           {g.features.length > 0 && (
             <Flexbox gap={6} horizontal wrap="wrap">
               {g.features.map((f) => (
-                <Tag key={f}>{f}</Tag>
+                <Tag className={styles.feature} data-game-feature={f} key={f}>
+                  <Text className={styles.featureText} ellipsis={{ tooltip: f, tooltipWhenOverflow: true }}>
+                    {f}
+                  </Text>
+                </Tag>
               ))}
             </Flexbox>
           )}

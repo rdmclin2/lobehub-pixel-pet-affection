@@ -364,3 +364,45 @@ test('Windows end to end on the fake helper: enter attaches through the helper; 
     await host.quit();
   }
 });
+
+test('no GPU (T-13654 D3): the page reports a software renderer → wallpaper:render scale 0.5 and 10 fps (why software); battery / covered still on top; a GPU renderer keeps 24 at full size', async () => {
+  const { host, E, settings } = setup();
+  await host.enter('mini-wallpaper');
+  const w = E.made[0];
+  host.pageReport(w.webContents, { type: 'ready' });
+  assert.deepEqual(w.power(), { fps: 24, why: 'normal' });
+  host.pageReport(w.webContents, { type: 'render', renderer: 'ANGLE (Mesa; llvmpipe (LLVM 20.1.2 256 bits); OpenGL 4.5)' });
+  const render = () => w.sent.filter(([c]) => c === 'wallpaper:render').map(([, p]) => p).pop();
+  assert.deepEqual(render(), { software: true, scale: 0.5 });
+  assert.deepEqual(w.power(), { fps: 10, why: 'software' });
+  settings.batteryFps = 4;
+  E.powerMonitor.emit('on-battery');
+  assert.deepEqual(w.power(), { fps: 4, why: 'battery' });
+  E.powerMonitor.emit('on-ac');
+  host.pageReport(w.webContents, { type: 'visibility', hidden: true });
+  assert.deepEqual(w.power(), { fps: 0, why: 'covered' });
+  host.pageReport(w.webContents, { type: 'visibility', hidden: false });
+  assert.deepEqual(w.power(), { fps: 10, why: 'software' });
+  assert.equal(host.bootFor(w.webContents).fps, 10, 'a reloaded page starts at the software cap');
+  const dbg = await host.debugState({ probe: false });
+  assert.deepEqual([dbg.windows[0].render.software, dbg.windows[0].render.scale], [true, 0.5]);
+  assert.match(dbg.windows[0].render.renderer, /llvmpipe/);
+  const gpu = setup();
+  await gpu.host.enter('mini-wallpaper');
+  const g = gpu.E.made[0];
+  gpu.host.pageReport(g.webContents, { type: 'ready' });
+  gpu.host.pageReport(g.webContents, { type: 'render', renderer: 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)' });
+  assert.deepEqual(g.sent.filter(([c]) => c === 'wallpaper:render').map(([, p]) => p).pop(), { software: false, scale: 1 });
+  assert.deepEqual(g.power(), { fps: 24, why: 'normal' });
+});
+
+test('the time of day (T-13654 D4): the page boots on the computer clock and a settings change keeps it there, whatever the mini games\' scene says', async () => {
+  const { host, E } = setup();
+  await host.enter('mini-wallpaper');
+  const w = E.made[0];
+  const games = { followClock: false, dayFlow: true, hour: 8, weather: 'clear', autoWeather: false, game: '' };
+  assert.deepEqual(host.bootFor(w.webContents, null, games).scene, { followClock: true, dayFlow: false, hour: 8, weather: 'clear' });
+  host.sceneChanged({ ...games, dayFlow: false, hour: 3, weather: 'rain' });
+  const sent = w.sent.filter(([c]) => c === 'wallpaper:settings').map(([, p]) => p).pop();
+  assert.deepEqual(sent, { scene: { followClock: true, dayFlow: false, hour: 3, weather: 'rain' } });
+});

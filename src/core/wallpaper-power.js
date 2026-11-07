@@ -11,6 +11,10 @@
 //   she is in a mini game               0
 //   she was called out (the pet window  min(normal, OUT_FPS): the wallpaper keeps moving behind the windows, slower
 //     is on the desktop)
+//   software rendering (no GPU: the     min(that, SOFTWARE_FPS), and the page draws at SOFTWARE_SCALE of the screen's
+//     page's WebGL renderer is           pixels (renderPlan) — every pixel is drawn by the CPU there (SwiftShader: a
+//     SwiftShader / llvmpipe …)          24 fps wallpaper took ~4 cores, T-13654 D3). A real GPU keeps the full rate
+//                                        and resolution; battery / covered / … still apply on top in both cases
 //
 // Pure: main passes the signals in, the tests pass made-up ones.
 
@@ -18,10 +22,24 @@ const DEFAULT_FPS = 30;
 const DEFAULT_BATTERY_FPS = 10;
 const OUT_FPS = 15;
 const MAX_FPS = 30;
+const SOFTWARE_FPS = 10;
+const SOFTWARE_SCALE = 0.5;
+
+// the page's WebGL renderer string (WEBGL_debug_renderer_info) → drawn by the CPU? Chromium's SwiftShader (no GPU,
+// GPU blocklisted, 硬件加速 off), Mesa llvmpipe / softpipe / lavapipe, Windows' Basic Render Driver, Apple's software
+// renderer. Anything else (a real GPU, or a string we cannot read) counts as hardware.
+const SOFTWARE_RE = /swiftshader|llvmpipe|softpipe|lavapipe|software|basic render driver/i;
+const isSoftwareRenderer = (renderer) => typeof renderer === 'string' && SOFTWARE_RE.test(renderer);
+
+// how the page draws: { software, scale } — scale is the renderer's resolution (1 = every screen pixel)
+function renderPlan(renderer) {
+  const software = isSoftwareRenderer(renderer);
+  return { software, scale: software ? SOFTWARE_SCALE : 1 };
+}
 
 const clampFps = (v, d) => (Number.isFinite(v) ? Math.max(0, Math.min(MAX_FPS, Math.round(v))) : d);
 
-// signals: { onBattery, covered: bool | { [displayId]: bool }, locked, suspended, inGame, out, displayId }
+// signals: { onBattery, covered: bool | { [displayId]: bool }, locked, suspended, inGame, out, software, displayId }
 // prefs:   settings.wallpaper ({ fps, batteryFps, pauseWhenCovered }); pack: the manifest's power ({ fps })
 // → { fps, why } — why names the strongest reason (for the e2e and the debug read-out)
 function frameRate(signals = {}, prefs = {}, pack = {}) {
@@ -40,6 +58,7 @@ function frameRate(signals = {}, prefs = {}, pack = {}) {
     if (b < fps) { fps = b; why = 'battery'; }
   }
   if (signals.out && OUT_FPS < fps) { fps = OUT_FPS; why = signals.onBattery && why === 'battery' ? why : 'out'; }
+  if (signals.software && SOFTWARE_FPS < fps) { fps = SOFTWARE_FPS; why = 'software'; }
   return { fps, why };
 }
 
@@ -48,4 +67,4 @@ function frameRates(displayIds, signals, prefs, pack) {
   return Object.fromEntries(displayIds.map((id) => [String(id), frameRate({ ...signals, displayId: id }, prefs, pack)]));
 }
 
-module.exports = { DEFAULT_FPS, DEFAULT_BATTERY_FPS, OUT_FPS, MAX_FPS, frameRate, frameRates };
+module.exports = { DEFAULT_FPS, DEFAULT_BATTERY_FPS, OUT_FPS, MAX_FPS, SOFTWARE_FPS, SOFTWARE_SCALE, isSoftwareRenderer, renderPlan, frameRate, frameRates };

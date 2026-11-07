@@ -136,4 +136,12 @@ const REASON_TEXT = {
 };
 const reasonText = (r) => REASON_TEXT[r] || String(r || '');
 
-module.exports = { WHERE, MOVES, move, reconcile, fitCanvas, screenToCanvas, canvasToScreen, petWindowAt, walkClip, RETRY_DELAYS, RETRY_BUDGET_MS, retryPlan, crashBudget, debounce, REASON_TEXT, reasonText };
+// The time of day the wallpaper shows (T-13654 D4): always this computer's clock, as the store page says (「时段跟着
+// 电脑时钟」) — not the mini games' settings.scene (by default a 24-minute day that starts at 8:00). Only the weather
+// comes from settings.scene. Main hands the page this both at boot and when the settings change.
+function wallpaperScene(scene) {
+  const s = scene && typeof scene === 'object' ? scene : {};
+  return { followClock: true, dayFlow: false, hour: Number.isFinite(s.hour) ? s.hour : 12, weather: typeof s.weather === 'string' ? s.weather : 'clear' };
+}
+
+module.exports = { wallpaperScene, WHERE, MOVES, move, reconcile, fitCanvas, screenToCanvas, canvasToScreen, petWindowAt, walkClip, RETRY_DELAYS, RETRY_BUDGET_MS, retryPlan, crashBudget, debounce, REASON_TEXT, reasonText };
