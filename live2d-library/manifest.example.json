@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "description": "示例，不是真实清单：两条字段完整的条目，演示已下载（脚本回填后）与付费未下载两种状态。真实清单是 manifest.json；数值为示意。",
+  "updatedAt": "2026-11-07",
+  "entries": [
+    {
+      "id": "gh-example-cat",
+      "name": "示例猫娘（已下载）",
+      "channel": "github",
+      "sourceUrl": "https://github.com/example/live2d-cat",
+      "author": "example（建模） / example（原画）",
+      "downloadStatus": "downloaded",
+      "failReason": null,
+      "license": "作者自定条款",
+      "licenseNote": "README 原文：「可免费用于个人直播与桌宠，禁止二次配布、禁止商用」 https://github.com/example/live2d-cat#license",
+      "licenseFlags": {
+        "commercial": false,
+        "redistribute": false,
+        "modify": true,
+        "attribution": true,
+        "needsAuthorization": false
+      },
+      "cubismVersion": 4,
+      "appSupported": true,
+      "files": ["cat.model3.json"],
+      "hasPhysics": true,
+      "expressionCount": 6,
+      "expressionParamCount": 0,
+      "motionCount": 4,
+      "textureMaxSize": 2048,
+      "sizeBytes": 3145728,
+      "missingFiles": [],
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "qualityTier": "A",
+      "previewPath": "previews/gh-example-cat.png",
+      "notes": "cubismVersion…qualityTier 由 scripts/live2d-library-check.js 回填"
+    },
+    {
+      "id": "booth-example-fox",
+      "name": "示例狐狸（付费）",
+      "channel": "booth",
+      "sourceUrl": "https://booth.pm/ja/items/0000000",
+      "author": "example",
+      "downloadStatus": "paid",
+      "failReason": "付费素材 ¥3,000，未购买",
+      "license": "Booth 作者利用规约",
+      "licenseNote": "商品页「利用規約」：個人利用のみ、再配布禁止、改変は可、商用は要相談",
+      "licenseFlags": {
+        "commercial": "unknown",
+        "redistribute": false,
+        "modify": true,
+        "attribution": "unknown",
+        "needsAuthorization": true
+      },
+      "cubismVersion": "unknown",
+      "appSupported": false,
+      "files": [],
+      "hasPhysics": false,
+      "expressionCount": 0,
+      "motionCount": 0,
+      "textureMaxSize": 0,
+      "sizeBytes": 0,
+      "sha256": null,
+      "qualityTier": "C",
+      "previewPath": null,
+      "notes": "未下载的条目没有可测量字段，按 C 档（暂不能用）记"
+    }
+  ]
+}

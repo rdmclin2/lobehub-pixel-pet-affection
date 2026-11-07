@@ -10,6 +10,7 @@ live2d-library/
 ├── README.md              本文件（提交）
 ├── manifest.json          机器可读清单，每套模型一条（提交）
 ├── manifest.schema.json   清单的 JSON Schema（提交）
+├── manifest.example.json  两条字段完整的示例条目（提交，不是真实清单）
 ├── models/<id>/           模型原样解压（git 忽略，只在本地）
 ├── _downloads/<id>.<ext>  原始压缩包 zip / 7z / rar（git 忽略，只在本地）
 └── previews/<id>.png      预览缩略图（git 忽略，只在本地；清单里的 previewPath 指向这里）
@@ -36,7 +37,7 @@ live2d-library/
 
 ## 3. 清单字段（`manifest.json`）
 
-`manifest.json` 为 `{ "schema": 1, "updatedAt": "YYYY-MM-DD", "entries": [ ... ] }`。标 **auto** 的字段由校验脚本测量回填，手写会被覆盖。
+`manifest.json` 为 `{ "schema": 1, "updatedAt": "YYYY-MM-DD", "entries": [ ... ] }`，完整条目示例见 `manifest.example.json`。标 **auto** 的字段由校验脚本测量回填，手写会被覆盖。
 
 | 字段 | 含义 |
 | --- | --- |
@@ -73,7 +74,7 @@ live2d-library/
 | --- | --- |
 | **A** 接近大肥鱼 | Cubism 4 / 5、有物理、最大贴图 ≥ 2048、有表情（`.exp3.json` 或表情参数），且引用文件齐全 |
 | **B** 能用 | Cubism 3+（应用能加载），引用齐全，但缺 A 的某一项（如 Cubism 3、无物理、贴图 < 2K、无表情） |
-| **C** 暂不能用 | Cubism 2、版本不明、引用文件缺失，或目录里找不到模型文件 |
+| **C** 暂不能用 | Cubism 2、版本不明、引用文件缺失、目录里找不到模型文件，或尚未下载 |
 
 ### 质量基准：大肥鱼（`catalog/packs/dafeiyu-live2d`，只读测量，未复制进本库）
 
@@ -105,7 +106,7 @@ sample (read-only): catalog/packs/dafeiyu-live2d
 node scripts/live2d-library-check.js            # 校验并回填 manifest.json（npm run live2d:check）
 node scripts/live2d-library-check.js --dry-run  # 只校验，不写 manifest.json
 node scripts/live2d-library-check.js --json     # 机器可读输出
-node scripts/live2d-library-check.js --sample <模型目录>   # 只读测量任意目录（如大肥鱼）
+node scripts/live2d-library-check.js --sample <模型目录>   # 只读测量任意目录（如大肥鱼），别名 --ref
 ```
 
 脚本只用 Node 内置模块。它遍历 `models/<id>/`，解析每个 `*.model3.json` / `*.model.json`，检查 moc、贴图、物理、pose、

@@ -11,7 +11,7 @@
 //
 //   node scripts/live2d-library-check.js                      # check the library and backfill manifest.json
 //   node scripts/live2d-library-check.js --dry-run            # check only, leave manifest.json alone
-//   node scripts/live2d-library-check.js --sample <dir>       # measure one model dir read-only (quality baseline)
+//   node scripts/live2d-library-check.js --sample <dir>       # measure one model dir read-only (quality baseline; alias --ref)
 //   node scripts/live2d-library-check.js --root <libDir>      # another library root (tests)
 //   add --json for machine-readable output
 //
@@ -153,7 +153,7 @@ function analyzeModel(file) {
 }
 
 // A = 接近大肥鱼: Cubism 4+, physics, ≥2K texture, expressions (.exp3.json or expression parameters)
-// B = runs in the app (Cubism 3+) but misses part of A; C = Cubism 2 / unknown / broken
+// B = runs in the app (Cubism 3+) but misses part of A; C = Cubism 2 / unknown / broken / not downloaded
 function tierOf(m) {
   const cub = typeof m.cubismVersion === 'number' ? m.cubismVersion : 0;
   if (m.missingFiles.length || cub < 3) return 'C';
@@ -289,7 +289,7 @@ function printModels(models, base) {
 function main(argv) {
   const arg = (name) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : null; };
   const json = argv.includes('--json');
-  const sample = arg('--sample');
+  const sample = arg('--sample') || arg('--ref');
   if (sample) {
     const dir = path.resolve(sample);
     if (!fs.existsSync(dir)) { console.error(`no such dir: ${dir}`); return 2; }

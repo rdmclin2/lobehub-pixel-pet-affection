@@ -54,6 +54,14 @@ test('every entry of the committed manifest is well-formed', () => {
   assert.deepEqual(m.entries.flatMap(L.validateEntry), []);
 });
 
+test('manifest.example.json: complete entries that pass validation and carry every schema field', () => {
+  const ex = JSON.parse(fs.readFileSync(path.join(ROOT, 'live2d-library', 'manifest.example.json'), 'utf8'));
+  const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'live2d-library', 'manifest.schema.json'), 'utf8'));
+  assert.ok(ex.entries.length >= 2);
+  assert.deepEqual(ex.entries.flatMap(L.validateEntry), []);
+  for (const e of ex.entries) for (const k of schema.$defs.entry.required) assert.ok(k in e, `${e.id} lacks ${k}`);
+});
+
 test('backfills measured fields, tiers models and creates missing entries', () => {
   const lib = fixture();
   const { manifest, problems } = L.checkLibrary(lib, { write: true });
