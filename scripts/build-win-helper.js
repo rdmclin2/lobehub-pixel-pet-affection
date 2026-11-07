@@ -34,7 +34,10 @@ const EXE = path.join(OUT_DIR, EXE_NAME);
 const CC_CANDIDATES = process.env.PIXELPET_MINGW_CC
   ? [process.env.PIXELPET_MINGW_CC]
   : ['x86_64-w64-mingw32-gcc', ...(process.platform === 'win32' ? ['gcc'] : [])];
-const windresFor = (cc) => process.env.PIXELPET_MINGW_WINDRES || cc.replace(/gcc(\.exe)?$/, 'windres$1');
+// the resource compiler next to that gcc; MinGW-Builds (windows-latest) has a prefixed gcc but only a bare windres
+const windresCandidates = (cc) => process.env.PIXELPET_MINGW_WINDRES
+  ? [process.env.PIXELPET_MINGW_WINDRES]
+  : [...new Set([cc.replace(/gcc(\.exe)?$/, 'windres$1'), ...(process.platform === 'win32' ? ['windres'] : [])])];
 
 const FLAGS = [
   '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -66,7 +69,9 @@ function findCompiler() {
     let machine = '';
     try { machine = execFileSync(cc, ['-dumpmachine'], { encoding: 'utf8' }).trim(); } catch { /* keep '' */ }
     if (!/^x86_64-w64-mingw32/.test(machine)) { console.log(`win helper: skipping ${cc} (targets ${machine || '?'})`); continue; }
-    return { cc, windres: windresFor(cc), version };
+    const windres = windresCandidates(cc).find((w) => versionOf(w));
+    if (!windres) { console.log(`win helper: skipping ${cc} (no windres: ${windresCandidates(cc).join(', ')})`); continue; }
+    return { cc, windres, version };
   }
   return null;
 }
