@@ -7173,6 +7173,8 @@ const quitButtonScenario = () => require('./quit-button')({ ROOT, OUT, FAKE_LH, 
 const petPanelScenario = () => require('./pet-panel')({ ROOT, OUT, FAKE_LH, step, launch });
 // 小游戏 (docs/mini-games.md): the store's game packs played in the game window — download, entry, rendering, time / weather, her walking, things, quests, persistence
 const miniGameScenario = () => require('./mini-game')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
+// 桌面壁纸 (docs/wallpaper-mode.md): store → 设为壁纸 → X11 probe (type / stacking / input shape) → … → 退出壁纸
+const wallpaperScenario = () => require('./wallpaper')({ ROOT, OUT, FAKE_LH, step, launch, openAdminWindow });
 const gameDocsScenario = () => require('./mini-game-docs')({ ROOT, FAKE_LH, step, launch, openAdminWindow });
 // 像素房间 (docs/her-room-design.md §7.2): the room@1 game from the store — five activities, the room picker, settling
 const miniRoomScenario = () => require('./mini-room')({ ROOT, OUT, FAKE_LH, step, launch });
@@ -12935,6 +12937,7 @@ async function interjectScenario() {
   if (which === 'quitbtn' || which === 'all') await quitButtonScenario()();
   if (which === 'petpanel' || which === 'all') await petPanelScenario()();
   if (which === 'game' || which === 'all') await miniGameScenario()();
+  if (which === 'wallpaper' || which === 'all') await wallpaperScenario()(); // 桌面壁纸: needs openbox, xprop, xdotool, ImageMagick (xvfb-run -s "-screen 0 1280x800x24")
   if (which === 'room' || which === 'all') await miniRoomScenario()();
   if (which === 'illustrated' || which === 'all') await illustratedRoomScenario()();
   if (which === 'herroomaccept') await herRoomAcceptScenario()(); // 她的房间 上架验收: real CDN, real agent (tokens), real pointer, whole-screen recording (xvfb-run -s "-screen 0 1600x1000x24"), not in `all`

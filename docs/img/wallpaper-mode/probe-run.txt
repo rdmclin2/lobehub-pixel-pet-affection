@@ -1,0 +1,27 @@
+== no window manager (Xvfb only)
+PASS P0-ewmh-wm {"hasWm":false,"raw":"_NET_SUPPORTING_WM_CHECK:  not found."}
+PASS P1-window-type {"wall":"0x200002","raw":"_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP","overrideRedirect":"no"}
+== Xvfb + openbox
+PASS P0-ewmh-wm {"hasWm":true,"raw":"_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x20011f"}
+PASS P1-window-type {"wall":"0x400002","raw":"_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP","overrideRedirect":"no"}
+PASS P2a-below-normal {"pixelAtNormalCentre":"#FFFFFF","netClientListStacking_bottomToTop":"_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a","wall":"0x400002","normal":"0x40000a"}
+PASS P2b-still-below-after-raise {"tried":"moveTop + wmctrl add,above + wmctrl -a + xdotool windowraise","pixelAtNormalCentre":"#FFFFFF","netClientListStacking_bottomToTop":"_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a","activeAfter":"0x400002"}
+PASS P3-click-through {"wallpaperClicks":0,"normalClicks":1}
+PASS P4-no-focus-steal {"activeBefore":"0x40000a","activeAfterWallpaperClick":"0x0","wall":"0x400002"}
+PASS P3b-control-input-on {"wallpaperClicksWithInputOn":1,"activeAfter":"0x400002"}
+PASS P5-frame-budget {"framesIn2s":{"cap30":61,"cap15":30,"paused":0}}
+PASS P8-focusable-false-is-override-redirect {"overrideRedirect":"yes","pixelAtNormalCentre":"#FFFF00","meaning":"not white = the focusable:false desktop window covers the normal window"}
+SKIP P6-display-change {"why":"Xvfb has a single fixed RandR mode; run with PROBE_XSERVER=xvnc"}
+SKIP P7-multi-monitor {"why":"see the Xvnc run"}
+== Xvnc + openbox (resolution change, second monitor)
+PASS P0-ewmh-wm {"hasWm":true,"raw":"_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x20011f"}
+PASS P1-window-type {"wall":"0x400002","raw":"_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP","overrideRedirect":"no"}
+PASS P2a-below-normal {"pixelAtNormalCentre":"#FFFFFF","netClientListStacking_bottomToTop":"_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a","wall":"0x400002","normal":"0x40000a"}
+PASS P2b-still-below-after-raise {"tried":"moveTop + wmctrl add,above + wmctrl -a + xdotool windowraise","pixelAtNormalCentre":"#FFFFFF","netClientListStacking_bottomToTop":"_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a","activeAfter":"0x400002"}
+PASS P3-click-through {"wallpaperClicks":0,"normalClicks":1}
+PASS P4-no-focus-steal {"activeBefore":"0x40000a","activeAfterWallpaperClick":"0x0","wall":"0x400002"}
+PASS P3b-control-input-on {"wallpaperClicksWithInputOn":1,"activeAfter":"0x400002"}
+PASS P5-frame-budget {"framesIn2s":{"cap30":60,"cap15":30,"paused":0}}
+PASS P8-focusable-false-is-override-redirect {"overrideRedirect":"yes","pixelAtNormalCentre":"#FFFF00","meaning":"not white = the focusable:false desktop window covers the normal window"}
+PASS P6-display-change {"xrandr":"ok","event":{"x":0,"y":0,"width":1024,"height":768},"wallBounds":{"x":0,"y":0,"width":1024,"height":768},"xwin":["Width: 1024","Height: 768"]}
+SKIP P7-multi-monitor {"why":"Chromium reads RandR outputs, not xrandr --setmonitor logical monitors; neither Xvfb (+xinerama) nor Xvnc gives it a second output here → real-machine check","setmonitor":["",""],"displayAddedEvents":0,"displays":[{"x":0,"y":0,"width":1280,"height":800}],"perDisplayWallpapers":[{"x":0,"y":0,"width":1279,"height":799}]}

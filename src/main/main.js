@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, shell, dialog, clipboard, safeStorage, session, systemPreferences, Tray, Menu, nativeImage, protocol, net, globalShortcut, powerMonitor, Notification } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -45,6 +45,8 @@ const { AdminWindow } = require('./admin-window');
 const { VoiceHotkey } = require('./voice-hotkey');
 const { PetPanel } = require('./pet-panel');
 const { GameWindow } = require('./game-window');
+const { WallpaperHost, backendFor: wallpaperBackend } = require('./wallpaper/host');
+const { wireWallpaper } = require('./wallpaper/wire');
 const { GameLibrary, GameIndex } = require('./games');
 const GameIndexLib = require('../core/game-index');
 const GameStore = require('../core/game-store');
@@ -94,6 +96,8 @@ const openedLinks = []; // E2E only: links the window asked to open (not opened 
 const openedMusic = []; // E2E only: songs a window asked to open with the system player / show in the folder
 let micAccessOverride = null; // E2E only (debug-mic-access): 'denied' plays a refused microphone
 let petPanel = null; // 她的面板 (pet-panel.js): her state and buttons, in its own window beside her
+let wallpaper = null; // 桌面壁纸 (wallpaper/host.js): she lives in the desktop background; wallpaperWire: its IPC, tray items, restore
+let wallpaperWire = null;
 let scene = null; // 小游戏 (game-window.js): the window she plays a game pack in; her desktop window hides meanwhile
 let games = null; // 小游戏 packs on disk (games.js): userData/games, plus catalog/games with PIXELPET_DEV_GAMES=1
 let gameStore = null; // 商店 → 小游戏: the downloader, unpacking into userData/games/<id>/ (core/game-store.js)
@@ -255,6 +259,8 @@ function openAdmin(section) {
 }
 function showPet() {
   if (!win || win.isDestroyed()) return;
+  // 桌面壁纸: she is in the wallpaper → called out first (wallpaper/host.js recall shows her window where she stood)
+  if (wallpaperWire && wallpaperWire.beforeShowPet()) return;
   // she cannot be in a game and on the desktop at once: whatever needs her here closes the game first
   if (scene && scene.visible) scene.close('pet-needed');
   if (win.isMinimized()) win.restore();
@@ -325,20 +331,28 @@ function createTray() {
     if (process.platform === 'darwin') icon.setTemplateImage(true);
     tray = new Tray(icon);
     tray.setToolTip('Pixel Pet');
-    trayMenu = Menu.buildFromTemplate([
-      { label: '打开设置…', click: () => openAdmin() },
-      { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
-      { label: '小游戏', click: () => { toggleScene('tray').catch(logError); } },
-      { label: '重置姿势', click: () => { resetPose('tray'); } },
-      { type: 'separator' },
-      { label: '检查更新', click: () => { checkUpdatesWithDialog('tray').catch(logError); } },
-      { label: '退出', click: () => app.quit() },
-    ]);
-    tray.setContextMenu(trayMenu);
+    refreshTray();
     tray.on('click', () => openAdmin());
   } catch (e) {
     logError(e); // no tray on this desktop: the ⚙ button, a right click on her and Ctrl+, still open the settings
   }
+}
+// the tray menu, built again when what it offers changes (桌面壁纸: 壁纸 → 叫她出来 / 回到壁纸 · 退出壁纸 · 换一张壁纸…,
+// only once a wallpaper is downloaded)
+function refreshTray() {
+  if (!tray) return;
+  const wall = wallpaperWire ? wallpaperWire.trayItems() : null;
+  trayMenu = Menu.buildFromTemplate([
+    { label: '打开设置…', click: () => openAdmin() },
+    { label: '显示桌宠', click: () => { showPet(); if (service && service.pet) place('pet'); } },
+    { label: '小游戏', click: () => { toggleScene('tray').catch(logError); } },
+    ...(wall ? [wall] : []),
+    { label: '重置姿势', click: () => { resetPose('tray'); } },
+    { type: 'separator' },
+    { label: '检查更新', click: () => { checkUpdatesWithDialog('tray').catch(logError); } },
+    { label: '退出', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(trayMenu);
 }
 // macOS application menu: 关于 / 检查更新… / 偏好设置… ⌘, / 退出 ⌘Q. e2e runs build it on Linux too
 // (PIXELPET_E2E_APP_MENU=1) to click 检查更新… the way the menu does.
@@ -553,6 +567,7 @@ function wire() {
   ipcMain.handle('boot', () => {
     const v = service.init();
     place(v ? 'pet' : 'onboarding');
+    if (v && wallpaperWire) wallpaperWire.restoreSoon(); // 桌面壁纸 was on when the app quit: back into it
     if (v) setTimeout(() => service.warmup().catch((e) => logError(e)), 1500);
     return { view: v, update: updater.state, settings: service.getSettings(), species: speciesInfo(), characters: charactersInfo(), foods: FOODS, testMode: TEST_MODE };
   });
@@ -686,7 +701,7 @@ function wire() {
     const was = installedGames().get(String(id || '')) || null;
     if (was && scene.visible && scene.gameId === id) scene.close('update'); // the game being played is replaced
     const r = await gameStore.download(String(id || ''));
-    if (r.ok) { scene.forget(r.id); notifyGameUpdates(); }
+    if (r.ok) { scene.forget(r.id); notifyGameUpdates(); if (wallpaper && wallpaper.id === r.id) wallpaper.refreshPack().catch(logError); refreshTray(); } // the wallpaper in use was updated: reloaded; a first wallpaper adds 托盘 → 壁纸
     pushAdmin();
     return { ...r, updatedFrom: r.ok ? was : null, store: await gameStoreState() };
   });
@@ -694,8 +709,9 @@ function wire() {
   ipcMain.handle('game-remove', async (_e, { id } = {}) => {
     const gid = String(id || '');
     if (scene.visible && scene.gameId === gid) scene.close('removed');
+    if (wallpaper && wallpaper.id === gid) await wallpaper.exit({ reason: 'removed' }); // the wallpaper in use is deleted: she comes back to the desktop
     const r = GameStore.remove(games.userDir, gid);
-    if (r.ok) scene.forget(gid);
+    if (r.ok) { scene.forget(gid); refreshTray(); }
     pushAdmin();
     return { ...r, store: await gameStoreState() };
   });
@@ -1447,9 +1463,12 @@ function wire() {
     ipcMain.handle('debug-opened-links', () => openedLinks.slice());
     ipcMain.handle('debug-opened-music', () => openedMusic.slice());
     // the tray (PIXELPET_TRAY=1 in tests): its menu items, and a click on one of them as the user would
-    ipcMain.handle('debug-tray', () => ({ created: !!tray, items: trayMenu ? trayMenu.items.map((i) => i.label).filter(Boolean) : [] }));
+    // a submenu's items are listed and clicked as '<menu>/<item>' (壁纸/叫她出来)
+    ipcMain.handle('debug-tray', () => ({ created: !!tray, items: trayMenu ? trayMenu.items.flatMap((i) => (i.submenu ? [i.label, ...i.submenu.items.map((x) => `${i.label}/${x.label}`)] : [i.label])).filter(Boolean) : [] }));
     ipcMain.handle('debug-tray-click', (_e, { label } = {}) => {
-      const item = trayMenu && trayMenu.items.find((i) => i.label === label);
+      const [top, sub] = String(label || '').split('/');
+      const parent = trayMenu && trayMenu.items.find((i) => i.label === top);
+      const item = sub ? parent && parent.submenu && parent.submenu.items.find((i) => i.label === sub) : parent;
       if (!item) return false;
       item.click();
       return true;
@@ -1516,7 +1535,8 @@ function wire() {
   // a new shortcut is registered before anyone is told, so the status that goes out is the new one
   service.on('settings', (st) => { broadcast('settings', applyHotkey() ? service.settingsView() : st); syncVisitors(); pushAdmin(); syncClipboardWatch(); if (scene) scene.send('game:settings', { scene: service.settings.scene, roam: service.settings.prefs.roam }); });
   // her look changed (another character, an outfit): the game redraws her
-  service.on('update', (v) => { if (scene && v) scene.send('game:view', v); });
+  service.on('update', (v) => { if (scene && v) scene.send('game:view', v); if (wallpaper && v) for (const w of wallpaper.wins.values()) if (!w.win.isDestroyed()) w.win.webContents.send('wallpaper:view', v); });
+  service.on('settings', () => { if (!wallpaper) return; wallpaper.sceneChanged(service.settings.scene); wallpaper.settingsChanged(); });
   // the companion appeared, changed or left: visitors follow (none without a companion)
   service.on('update', () => setImmediate(syncVisitors));
   service.on('error', logError);
@@ -1691,12 +1711,38 @@ app.whenReady().then(() => {
     testMode: TEST_MODE,
   });
   scene = new GameWindow({
-    onOpen: () => { if (win && !win.isDestroyed() && win.isVisible()) win.hide(); setImmediate(() => admin.send('admin-chat-changed', {})); }, // 设置 → 聊天 shows where she is now
-    onClosed: () => { settleRoom(); admin.send('admin-chat-changed', {}); if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
+    onOpen: () => { if (wallpaper) wallpaper.gameOpened(); if (win && !win.isDestroyed() && win.isVisible()) win.hide(); setImmediate(() => admin.send('admin-chat-changed', {})); }, // 设置 → 聊天 shows where she is now
+    // 桌面壁纸 on: she goes back into the wallpaper (wallpaper/host.js gameClosed), else back on the desktop
+    onClosed: () => { settleRoom(); admin.send('admin-chat-changed', {}); if (wallpaper && wallpaper.gameClosed()) return; if (win && !win.isDestroyed() && service && service.pet) { if (win.isMinimized()) win.restore(); win.show(); } },
     log: logError,
     testMode: TEST_MODE,
   });
+  // 桌面壁纸 (wallpaper/host.js, docs/wallpaper-mode.md): the platform backend (Linux X11 / Wayland, macOS, the
+  // Windows helper in resources/), her desktop window as the host sees it, the IPC and tray items (wallpaper/wire.js)
+  wallpaper = new WallpaperHost({
+    electron: { BrowserWindow, screen, powerMonitor },
+    backend: wallpaperBackend(process.platform, { screen, helperDir: app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', '..', 'build', 'win-helper'), log: logError }),
+    packs: games,
+    prefs: () => service.settings.wallpaper,
+    save: (patch) => service.setSection('wallpaper', patch),
+    pet: {
+      hasPet: () => !!(service && service.pet),
+      bounds: () => (win && !win.isDestroyed() ? win.getBounds() : null),
+      show: (b) => { if (!win || win.isDestroyed()) return; if (b) win.setPosition(b.x, b.y); if (win.isMinimized()) win.restore(); win.show(); win.focus(); },
+      hide: () => { if (win && !win.isDestroyed()) win.hide(); },
+    },
+    staticDir: path.join(app.getPath('userData'), 'wallpaper'),
+    testMode: TEST_MODE,
+    log: logError,
+  });
+  wallpaper.attachShortcuts(globalShortcut);
+  wallpaperWire = wireWallpaper({
+    ipcMain, host: wallpaper, service, games, admin, log: logError, testMode: TEST_MODE, refreshTray,
+    restoreDelayMs: TEST_MODE ? Number(process.env.PIXELPET_E2E_WALLPAPER_RESTORE_MS || 1500) : 3000,
+    notify: (n) => { if (!TEST_MODE && Notification.isSupported()) new Notification({ title: 'Pixel Pet · 壁纸', body: n.text }).show(); },
+  });
   createWindow();
+  win.on('focus', () => { if (wallpaper) wallpaper.touch(); }); // 叫她出来 后跟她互动: 自动回到壁纸的 5 分钟重新算
   createTray();
   createAppMenu();
   pets.set('main', { win, speciesId: null, hit: null, vx: 0, vy: 0 });
@@ -1714,6 +1760,16 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { if (scene) { if (scene.visible) settleRoom(); scene.quit(); } });
+let wallpaperQuitDone = false;
+app.on('before-quit', (e) => {
+  if (scene) { if (scene.visible) settleRoom(); scene.quit(); }
+  // 桌面壁纸: detach and give the system wallpaper back before the windows go (wallpaper/host.js quit); settings keep
+  // wallpaper.on, so the next start goes back into it
+  if (wallpaper && !wallpaperQuitDone && (wallpaper.active || wallpaper.mode === 'static')) {
+    e.preventDefault();
+    wallpaperQuitDone = true;
+    Promise.race([wallpaper.quit(), new Promise((r) => setTimeout(r, 3000))]).catch(logError).finally(() => app.quit());
+  }
+});
 // every global shortcut goes with the app (快捷键唤起语音对话)
 app.on('will-quit', () => { if (voiceHotkey) voiceHotkey.dispose(); else globalShortcut.unregisterAll(); });

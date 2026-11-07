@@ -1999,7 +1999,7 @@ class PetService extends EventEmitter {
   // the console's theme (ui), 系统 (system) and 音乐创作 (music, core/music.js). The patch is merged into the section and normalised by
   // settings.js like everything else; out-of-range values fall back to the default there.
   setSection(name, patch) {
-    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update', 'music', 'scene'].includes(name)) return { ok: false, reason: 'unknown-section' };
+    if (!['proactive', 'interject', 'affectionRules', 'ui', 'system', 'update', 'music', 'scene', 'wallpaper'].includes(name)) return { ok: false, reason: 'unknown-section' };
     const p = patch && typeof patch === 'object' ? patch : {};
     const merged = { ...this.settings[name], ...p };
     // interject.sources is the one nested object: a patch of one source keeps the others

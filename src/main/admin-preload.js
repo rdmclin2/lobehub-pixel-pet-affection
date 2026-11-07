@@ -129,6 +129,15 @@ contextBridge.exposeInMainWorld('petAdmin', {
   gameDownloadCancel: (id) => ipcRenderer.invoke('game-download-cancel', { id }),
   gameRemove: (id) => ipcRenderer.invoke('game-remove', { id }),
   gamePlay: (id) => ipcRenderer.invoke('game-play', { id }),
+  // 桌面壁纸 (src/main/wallpaper/wire.js, docs/wallpaper-mode.md §3.5): whether this computer can, which wallpaper is on
+  // and where she is; 设为壁纸 (confirmed: the first-time dialog was answered), 退出壁纸, 叫她出来, 让她回到壁纸
+  wallpaperState: (opts) => ipcRenderer.invoke('wallpaper-state', { fresh: !!(opts && opts.fresh) }),
+  wallpaperSet: (id, opts) => ipcRenderer.invoke('wallpaper-set', { id, confirmed: !!(opts && opts.confirmed) }),
+  wallpaperExit: () => ipcRenderer.invoke('wallpaper-exit'),
+  wallpaperRecall: () => ipcRenderer.invoke('wallpaper-recall'),
+  wallpaperReturn: () => ipcRenderer.invoke('wallpaper-return'),
+  onWallpaperChanged: on('wallpaper-changed'),
+  onWallpaperNotice: on('wallpaper-notice'),
   markSeen: (kind, species) => ipcRenderer.invoke('mark-seen', { kind, species }),
   historyList: () => ipcRenderer.invoke('history-list'),
   historyGet: (id) => ipcRenderer.invoke('history-get', { id }),

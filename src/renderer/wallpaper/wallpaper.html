@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <!-- data only: pictures from game:// (only the files the manifest names), the app's own scripts, no eval
+       (Pixi's unsafe-eval replacement), no network -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src game: pack: data: blob:; connect-src game: pack: data: blob:; script-src 'self'; style-src 'self'; worker-src blob:" />
+  <title>壁纸</title>
+  <link rel="stylesheet" href="wallpaper.css" />
+</head>
+<body>
+  <!-- 桌面壁纸 (src/main/wallpaper/host.js, docs/wallpaper-mode.md §2): one PixiJS stage — the pack's layers by z,
+       her (core/game-pet.js on core/game-world.js) at pet.z, the hour's tint (core/game-sky.js), lights and fireflies.
+       Nothing here takes input: the window ignores the mouse and sits behind the desktop icons. -->
+  <div id="stage"></div>
+  <script src="../vendor/pixi/pixi.min.js"></script>
+  <script src="../vendor/pixi/unsafe-eval.min.js"></script>
+  <script src="../../core/fx.js"></script>
+  <script src="../../core/game-world.js"></script>
+  <script src="../../core/game-pet.js"></script>
+  <script src="../../core/game-sky.js"></script>
+  <script src="wallpaper.js"></script>
+</body>
+</html>

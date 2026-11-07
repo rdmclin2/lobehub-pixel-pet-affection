@@ -72,3 +72,7 @@ lint-allow: LOBE-RAW-COLOR src/main/pet-panel.js
 小游戏的窗口（`src/main/game-window.js`）同理：`backgroundColor` 是页面画出来之前窗口的底色，取游戏画布外的深色（场景美术的背景色），在 CSS 之前生效，只能写字面色值。
 
 lint-allow: LOBE-RAW-COLOR src/main/game-window.js
+
+桌面壁纸的窗口（`src/main/wallpaper/*.js`，2026-11-07，T-13652）同理：`backgroundColor` 是壁纸页面画出来之前窗口的底色（黑色，和壁纸包 `canvas.background` 的默认值一致），在 CSS 之前生效，只能写字面色值；壁纸页面本身（`src/renderer/wallpaper/**`）是场景美术，已被上面的 `src/renderer/**` 放行覆盖。
+
+lint-allow: LOBE-RAW-COLOR src/main/wallpaper/**

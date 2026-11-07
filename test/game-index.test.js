@@ -31,6 +31,20 @@ test('cleanEntry: a remote entry may only point into the games repository; bad f
   assert.equal(Catalog.downloadUrl(e, {}, {}), `${Catalog.CDN_ORIGIN}/${Catalog.UPLOAD_PREFIX_ROOT}/games-v7/pixel-yard-1.0.0.zip`);
 });
 
+test('features keep the whole sentence (T-13654 D6: the detail page cuts it with an ellipsis and shows all of it on hover); only a runaway one is capped, visibly', () => {
+  const real = [
+    '壁纸：她住在桌面背景里的海边露台上，桌面图标和窗口都在她上面，壁纸点不到她，按 Ctrl+Alt+P 叫她出来',
+    '时段跟着电脑时钟：白天晴空和慢慢飘过的云，黄昏变暖，夜里星空、月光、灯串和灯塔亮起来；可以下雨',
+  ];
+  assert.deepEqual(GI.cleanEntry(entry({ features: real }), 'games-v1').features, real, 'the seaside-terrace store.json features, whole');
+  const long = 'x'.repeat(GI.FEATURE_MAX + 50);
+  const capped = GI.cleanEntry(entry({ features: [long, 7, 'ok'] }), 'games-v1').features;
+  assert.equal(capped.length, 2);
+  assert.equal(capped[0].length, GI.FEATURE_MAX);
+  assert.ok(capped[0].endsWith('…'), 'a capped feature says so');
+  assert.equal(capped[1], 'ok');
+});
+
 test('merge: per game the higher version wins; a newer remote one keeps the shipped picture to fall back on', () => {
   const bundled = GI.parseIndex({ games: [entry({ picture: 'catalog/games/pixel-yard.webp' })] }, { bundled: true });
   const remote = GI.parseIndex({ games: [entry({ version: '1.1.0', file: 'pixel-yard-1.1.0.zip', changelog: '加了钓鱼' }), entry({ id: 'snow-hill', name: '雪山', file: 'snow-hill-1.0.0.zip' })] });

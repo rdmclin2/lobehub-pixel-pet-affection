@@ -53,7 +53,9 @@ test('admin build is wired into start and every dist target, and lands inside bu
   assert.equal(pkg.scripts['build:admin'], 'vite build --config admin/vite.config.mjs');
   for (const s of ['start', 'start:no-sandbox', 'dist:mac', 'dist:win', 'dist:linux']) {
     assert.ok(pkg.scripts[s], s);
-    assert.equal(pkg.scripts[`pre${s}`], 'npm run build:admin', `pre${s}`);
+    // dist:win also builds / checks the Windows desktop helper first (docs/wallpaper-mode.md §7.5)
+    const extra = s === 'dist:win' ? ' && node scripts/build-win-helper.js --ensure' : '';
+    assert.equal(pkg.scripts[`pre${s}`], `npm run build:admin${extra}`, `pre${s}`);
   }
   assert.ok(pkg.build.files.includes('src/**/*'));
   assert.ok(!pkg.build.files.some((f) => /admin-ui/.test(f)), 'src/admin-ui is not excluded from the package');

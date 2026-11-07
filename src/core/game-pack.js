@@ -14,12 +14,16 @@
 //
 // engine `room@1` (像素房间, docs/her-room-design.md): the common fields here, the rest in core/room-pack.js.
 // engine `illustrated-room@1` (她的房间, docs/illustrated-room.md): the rest in core/illustrated-room-pack.js.
+// engine `wallpaper@1` (桌面壁纸, docs/wallpaper-mode.md §3): kind 'wallpaper', the rest in core/wallpaper-pack.js.
 //
 // Electron-free and DOM-free (main, the build script and the tests require() it).
 const Room = require('./room-pack');
 const Illustrated = require('./illustrated-room-pack');
+const Wallpaper = require('./wallpaper-pack');
 
-const ENGINES = ['yard@1', 'room@1', 'illustrated-room@1'];
+const ENGINES = ['yard@1', 'room@1', 'illustrated-room@1', 'wallpaper@1'];
+// what each engine's pack is: a game (played in the game window) or a wallpaper (drawn behind the desktop icons)
+const kindOf = (engine) => (engine === Wallpaper.ENGINE ? 'wallpaper' : 'game');
 const ID_RE = /^[a-z0-9][a-z0-9-]{2,63}$/;
 const FILE_RE = /^[a-z0-9][a-z0-9._-]{0,63}\.(webp|png|json)$/;
 const USE_ANIMS = ['idle', 'sit', 'play', 'pat', 'look', 'happy', 'eat', 'sleep', 'think', 'lookAround'];
@@ -33,15 +37,18 @@ const shape = (s) => poly(s) || (s && num(s.cx) && num(s.cy) && num(s.rx) && num
 // → [error…] (empty = good). `files`: the names in the folder (when checking one on disk), to see every file the
 // manifest names is there. `sprites`: the sprites index — for yard@1 the one file's JSON, for room@1
 // { <file>: <JSON> } of every theme's (spriteFiles(m)). `characters`: the default characters' ids (room@1 themes).
-function validateManifest(m, { files = null, sprites = null, characters } = {}) {
+// `dims`: { <file>: { width, height } } read from the pictures' headers (wallpaper@1 bounds its pictures' sizes).
+function validateManifest(m, { files = null, sprites = null, characters, dims = null } = {}) {
   const e = [];
   if (!m || typeof m !== 'object') return ['manifest is not an object'];
   if (m.schema !== 1) e.push('schema must be 1');
-  if (m.kind !== 'game') e.push('kind must be "game"');
+  // a wallpaper@1 pack is kind 'wallpaper' (wallpaper-pack.js checks it); every other engine's is a game
+  if (m.engine !== Wallpaper.ENGINE && m.kind !== 'game') e.push('kind must be "game"');
   if (!ENGINES.includes(m.engine)) e.push(`engine "${m.engine}" is not one this app plays (${ENGINES.join(', ')})`);
   if (!ID_RE.test(String(m.id || ''))) e.push('id must be 3–64 of a-z 0-9 -');
   if (typeof m.name !== 'string' || !m.name.trim()) e.push('name is missing');
   if (typeof m.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(m.version)) e.push('version must be x.y.z');
+  if (m.engine === Wallpaper.ENGINE) return [...e, ...Wallpaper.validateWallpaper(m, { files, dims, fileRe: FILE_RE, anims: USE_ANIMS })];
   if (m.engine === 'illustrated-room@1') return [...e, ...Illustrated.validateIllustratedRoom(m, { files, sprites, fileRe: FILE_RE })];
   if (m.engine === 'room@1') return [...e, ...Room.validateRoom(m, { files, sprites, anims: USE_ANIMS, fileRe: FILE_RE, ...(characters ? { characters } : {}) })];
   return [...e, ...validateYard(m, { files, sprites })];
@@ -95,11 +102,12 @@ function namedFiles(m) {
   if (!m || typeof m !== 'object') return [];
   if (m.engine === 'room@1') return Room.namedFiles(m);
   if (m.engine === 'illustrated-room@1') return Illustrated.namedFiles(m);
+  if (m.engine === Wallpaper.ENGINE) return Wallpaper.namedFiles(m);
   return [...new Set([...Object.values(m.images && typeof m.images === 'object' ? m.images : {}), m.sprites].filter((f) => typeof f === 'string'))];
 }
 // the sprites index file(s) a manifest names
-const spriteFiles = (m) => (m && m.engine === 'room@1' ? Room.spriteFiles(m) : m && m.engine === 'illustrated-room@1' ? Illustrated.spriteFiles(m) : m && typeof m.sprites === 'string' ? [m.sprites] : []);
+const spriteFiles = (m) => (m && m.engine === Wallpaper.ENGINE ? [] : m && m.engine === 'room@1' ? Room.spriteFiles(m) : m && m.engine === 'illustrated-room@1' ? Illustrated.spriteFiles(m) : m && typeof m.sprites === 'string' ? [m.sprites] : []);
 // engines whose sprites are { <index file>: JSON } (several indexes) rather than the one index's JSON
 const MULTI_INDEX = ['room@1', 'illustrated-room@1'];
 
-module.exports = { MULTI_INDEX, ENGINES, ID_RE, FILE_RE, USE_ANIMS, EFFECTS, validateManifest, validateYard, namedFiles, spriteFiles };
+module.exports = { MULTI_INDEX, ENGINES, kindOf, ID_RE, FILE_RE, USE_ANIMS, EFFECTS, validateManifest, validateYard, namedFiles, spriteFiles };

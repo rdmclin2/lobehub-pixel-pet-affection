@@ -1,0 +1,13 @@
+{
+  "file": "pixelpet-desktop-helper.exe",
+  "sha256": "ce6e113b0a608fc843a77079679645b63014ad1b7a4ee7e0bdf5aefe9c1f0728",
+  "size": 51712,
+  "sources": [
+    "src/main/wallpaper/helper/desktop-helper.c",
+    "src/main/wallpaper/helper/desktop-helper.rc",
+    "src/main/wallpaper/helper/desktop-helper.manifest"
+  ],
+  "sourceSha256": "6685b1befe807abe490e18548149a1bbf4d588fab3c6c958a36cdf985bb970b5",
+  "compiler": "x86_64-w64-mingw32-gcc (GCC) 13-win32",
+  "note": "Written by scripts/build-win-helper.js (npm run build:win-helper; CI: before dist:win). The main process (win-helper.js) refuses to start a helper exe whose sha256 differs; electron-builder ships the exe as resources/pixelpet-desktop-helper.exe."
+}

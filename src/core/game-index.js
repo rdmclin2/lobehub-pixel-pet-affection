@@ -26,6 +26,7 @@ const RELEASE_RE = /^games-v\d+$/;
 const PICTURE_RE = /^https:\/\/raw\.githubusercontent\.com\/rdmclin2\/pixel-pet-mini-games\/[\w./-]+\.(webp|png)$/;
 const REPO_RE = /^https:\/\/github\.com\/rdmclin2\/pixel-pet-mini-games(\/[\w./-]*)?$/;
 // a shipped picture: catalog/games/<id>.webp (the cover) or catalog/games/<id>/<file> (a screenshot), under src/renderer
+const WALLPAPER_MAX_BYTES = 120 * 1024 * 1024;
 const LOCAL_PIC_RE = /^catalog\/games\/[a-z0-9-]+(\/[a-z0-9][a-z0-9._-]*)?\.(webp|png)$/;
 
 // "1.10.0" > "1.9.3"
@@ -37,11 +38,18 @@ function compareVersions(a, b) {
 }
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
+// 特色 (store.json features): whole sentences. The detail page puts each on one line and cuts it there with an
+// ellipsis + the full text on hover (T-13654 D6), so the index keeps the full text; only a runaway one is capped,
+// and then visibly (…) — not cut mid-word into something that reads complete, as the old 40-character slice did.
+const FEATURE_MAX = 160;
+const feature = (f) => (f.length > FEATURE_MAX ? `${f.slice(0, FEATURE_MAX - 1)}…` : f);
 // one entry, cleaned: anything malformed is dropped (null); unknown fields are not carried
 function cleanEntry(g, release, { bundled = false } = {}) {
   if (!g || typeof g !== 'object' || g.type !== 'game' || !GP.ID_RE.test(String(g.id))) return null;
   if (!VER_RE.test(String(g.version)) || typeof g.name !== 'string' || !g.name.trim()) return null;
   if (!FILE_RE.test(String(g.file)) || !SHA_RE.test(String(g.sha256)) || !Number.isInteger(g.bytes) || g.bytes <= 0 || g.bytes > 200 * 1024 * 1024) return null;
+  // a wallpaper (docs/wallpaper-mode.md §3.3) is at most 120 MB
+  if (g.engine === 'wallpaper@1' && g.bytes > WALLPAPER_MAX_BYTES) return null;
   const okPic = (u) => typeof u === 'string' && (bundled ? LOCAL_PIC_RE.test(u) : PICTURE_RE.test(u));
   const picture = okPic(g.picture) ? g.picture : null;
   // 商店详情页的预览截图: [{ url, caption }], at most 8
@@ -50,7 +58,7 @@ function cleanEntry(g, release, { bundled = false } = {}) {
     id: g.id, type: 'game', name: str(g.name, 40), version: g.version, engine: str(g.engine, 20) || 'yard@1',
     minAppVersion: VER_RE.test(String(g.minAppVersion)) ? g.minAppVersion : null,
     description: str(g.description, 400), credit: str(g.credit, 200),
-    features: Array.isArray(g.features) ? g.features.filter((f) => typeof f === 'string').slice(0, 8).map((f) => f.slice(0, 40)) : [],
+    features: Array.isArray(g.features) ? g.features.filter((f) => typeof f === 'string').slice(0, 8).map(feature) : [],
     repo: typeof g.repo === 'string' && REPO_RE.test(g.repo) ? g.repo : REPO_URL,
     changelog: str(g.changelog, 2000), picture, screenshots,
     file: g.file, bytes: g.bytes, sha256: g.sha256, release,
@@ -114,7 +122,7 @@ function storeRows(index, installed = new Map(), downloads = [], ctx = {}) {
       else if (newer) s = { ...s, state: 'update' };
     }
     return {
-      id: g.id, name: g.name, version: g.version, installedVersion: have, engine: g.engine, minAppVersion: g.minAppVersion,
+      id: g.id, name: g.name, version: g.version, installedVersion: have, engine: g.engine, kind: GP.kindOf(g.engine), minAppVersion: g.minAppVersion,
       description: g.description, credit: g.credit, features: g.features, repo: g.repo, changelog: g.changelog,
       picture: g.picture, bundledPicture: g.bundledPicture || null, source: g.source || 'bundled',
       screenshots: g.screenshots || [], bundledScreenshots: g.bundledScreenshots || [],
@@ -130,4 +138,4 @@ function updates(index, installed, ctx = {}) {
     .map((g) => ({ id: g.id, name: g.name, from: installed.get(g.id), to: g.version, changelog: g.changelog }));
 }
 
-module.exports = { BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };
+module.exports = { FEATURE_MAX, WALLPAPER_MAX_BYTES, BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };

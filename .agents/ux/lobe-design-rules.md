@@ -41,3 +41,10 @@
 - 原因：负责人 2026-11-05 看了第一版授权页（T-5075）说「太丑了，参考 LobeHub Cloud Desktop 的 onboarding 页面设计」。参照物是 lobehub `src/features/DesktopOnboarding`（`steps/PermissionsStep.tsx`、`Layout`、`components/OnboardingFooterActions.tsx`）。
 - 做法：左对齐头部（Logo 位置放她的立绘）+ 一句说明；一个描边列表，行 = 40px 描边图标框 + 标题 + 12px 次要说明 + 右侧小按钮（整行可点）；状态不用 Tag：已授权整行 `colorFillSecondary` + 绿色对勾，等待时转圈 +「等待授权」，被拒绝时说明变红；底部吸底，左「返回」文字按钮、右「下一步」主按钮；内容最宽 560px。窗口不够高就给这一步加大窗口（`SIZES.perms`），不要让主要内容藏在滚动里。设置窗口里的同类列表用 `@lobehub/ui` 的 `Block` 画同样的行。
 - 层级：项目层（桌宠窗口是原生 JS，按令牌手写）。
+
+## R-07 长文本在界面上截断，数据层不悄悄切字
+
+- 判据：`src/core/` 把要显示给用户的文案（商店 `features`、说明等）`slice(0, n)` 成看起来完整的半句，界面上没有省略号、也看不到全文。
+- 原因：T-13654 验收 D6：详情页特色标签停在「…壁纸点不到她，按」「…灯串和灯塔亮」，看着像排版截断，实际是 `core/game-index.js` 把每条切到 40 字；界面再怎么加省略号也拿不回后半句。
+- 做法：数据层保留全文，只对失控长度设上限并以「…」结尾（`FEATURE_MAX`）；界面单行放不下时用 `Text ellipsis={{ tooltip, tooltipWhenOverflow: true }}`：省略号 + 悬停看全文，放得下就不出提示（detail-checklist X-2.1）。
+- 层级：rule（要看渲染才能判断是否被切，判据可写清）；回归测试 `test/game-index.test.js`（全文保留）与 e2e `wallpaper` WP12（省略号 + 悬停全文）。

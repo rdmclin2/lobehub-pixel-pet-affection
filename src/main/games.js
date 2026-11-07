@@ -30,9 +30,10 @@ class GameLibrary {
   installedIds() { return new Set(this.list().map((g) => g.id)); }
   has(id) { return this.list().some((g) => g.id === id); }
 
-  // the game to open: the one asked for, else the last played, else the first installed
+  // the game to open: the one asked for, else the last played, else the first installed — wallpapers
+  // (wallpaper@1) are not games: they never open in the game window (src/main/wallpaper/host.js draws them)
   pick(id, last) {
-    const all = this.list();
+    const all = this.list().filter((g) => g.kind !== 'wallpaper');
     return all.find((g) => g.id === id) || all.find((g) => g.id === last) || all[0] || null;
   }
 

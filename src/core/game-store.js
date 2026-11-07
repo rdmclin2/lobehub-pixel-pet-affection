@@ -12,6 +12,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const GP = require('./game-pack');
+const WP = require('./wallpaper-pack');
 
 const MARKER = '.catalog.json';
 
@@ -31,6 +32,17 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
 }
 
+// the first 64 bytes of a file → its picture size (wallpaper-pack.js imageSize), or null
+function headerOf(file) {
+  let fd = null;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(64);
+    const n = fs.readSync(fd, buf, 0, 64, 0);
+    return WP.imageSize(buf.subarray(0, n));
+  } catch { return null; } finally { if (fd !== null) fs.closeSync(fd); }
+}
+
 // problems with an unpacked game folder (null = good): a manifest that validates, under `id`, and nothing in the
 // folder but it and the files it names (no folders, no links)
 function checkFolder(dir, id) {
@@ -42,7 +54,9 @@ function checkFolder(dir, id) {
   // the sprites index: yard@1 has one (its JSON), room@1 one per open room ({ <file>: JSON })
   const read = (f) => (GP.FILE_RE.test(String(f)) && names.includes(f) ? readJson(path.join(dir, f)) : null);
   const sprites = GP.MULTI_INDEX.includes(m.engine) ? Object.fromEntries(GP.spriteFiles(m).map((f) => [f, read(f)]).filter(([, v]) => v)) : m.sprites ? read(m.sprites) : null;
-  const errors = GP.validateManifest(m, { files: names, sprites });
+  // a wallpaper's pictures are bounded by size: read from each file's first bytes, never decoded
+  const dims = m.engine === WP.ENGINE ? Object.fromEntries(WP.namedFiles(m).filter((f) => GP.FILE_RE.test(String(f)) && names.includes(f)).map((f) => [f, headerOf(path.join(dir, f))])) : null;
+  const errors = GP.validateManifest(m, { files: names, sprites, dims });
   if (errors.length) return { reason: 'bad-manifest', errors };
   const named = new Set(['manifest.json', MARKER, ...GP.namedFiles(m)]);
   for (const name of names) {
@@ -64,7 +78,7 @@ function listInstalled(roots) {
       const dir = path.join(root, name);
       if (checkFolder(dir, name)) continue;
       const m = readJson(path.join(dir, 'manifest.json'));
-      out.set(name, { id: name, name: m.name, version: m.version, description: m.description || '', dir, source, removable: fs.existsSync(path.join(dir, MARKER)) });
+      out.set(name, { id: name, name: m.name, version: m.version, engine: m.engine, kind: GP.kindOf(m.engine), description: m.description || '', dir, source, removable: fs.existsSync(path.join(dir, MARKER)) });
     }
   }
   return [...out.values()];
