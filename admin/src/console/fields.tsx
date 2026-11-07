@@ -56,10 +56,10 @@ export const formatValue = (f: FieldDef, v: unknown): string => {
 };
 
 /** confirmModal as a promise (the button texts are passed explicitly: project rule R-03). */
-export const ask = (title: ReactNode, content: ReactNode, okText: string, danger = false) =>
+export const ask = (title: ReactNode, content: ReactNode, okText: string, danger = false, cancelText = '取消') =>
   new Promise<boolean>((resolve) => {
     confirmModal({
-      cancelText: '取消',
+      cancelText,
       content,
       okButtonProps: danger ? { danger: true } : undefined,
       okText,

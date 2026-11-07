@@ -26,6 +26,7 @@ const RELEASE_RE = /^games-v\d+$/;
 const PICTURE_RE = /^https:\/\/raw\.githubusercontent\.com\/rdmclin2\/pixel-pet-mini-games\/[\w./-]+\.(webp|png)$/;
 const REPO_RE = /^https:\/\/github\.com\/rdmclin2\/pixel-pet-mini-games(\/[\w./-]*)?$/;
 // a shipped picture: catalog/games/<id>.webp (the cover) or catalog/games/<id>/<file> (a screenshot), under src/renderer
+const WALLPAPER_MAX_BYTES = 120 * 1024 * 1024;
 const LOCAL_PIC_RE = /^catalog\/games\/[a-z0-9-]+(\/[a-z0-9][a-z0-9._-]*)?\.(webp|png)$/;
 
 // "1.10.0" > "1.9.3"
@@ -42,6 +43,8 @@ function cleanEntry(g, release, { bundled = false } = {}) {
   if (!g || typeof g !== 'object' || g.type !== 'game' || !GP.ID_RE.test(String(g.id))) return null;
   if (!VER_RE.test(String(g.version)) || typeof g.name !== 'string' || !g.name.trim()) return null;
   if (!FILE_RE.test(String(g.file)) || !SHA_RE.test(String(g.sha256)) || !Number.isInteger(g.bytes) || g.bytes <= 0 || g.bytes > 200 * 1024 * 1024) return null;
+  // a wallpaper (docs/wallpaper-mode.md §3.3) is at most 120 MB
+  if (g.engine === 'wallpaper@1' && g.bytes > WALLPAPER_MAX_BYTES) return null;
   const okPic = (u) => typeof u === 'string' && (bundled ? LOCAL_PIC_RE.test(u) : PICTURE_RE.test(u));
   const picture = okPic(g.picture) ? g.picture : null;
   // 商店详情页的预览截图: [{ url, caption }], at most 8
@@ -114,7 +117,7 @@ function storeRows(index, installed = new Map(), downloads = [], ctx = {}) {
       else if (newer) s = { ...s, state: 'update' };
     }
     return {
-      id: g.id, name: g.name, version: g.version, installedVersion: have, engine: g.engine, minAppVersion: g.minAppVersion,
+      id: g.id, name: g.name, version: g.version, installedVersion: have, engine: g.engine, kind: GP.kindOf(g.engine), minAppVersion: g.minAppVersion,
       description: g.description, credit: g.credit, features: g.features, repo: g.repo, changelog: g.changelog,
       picture: g.picture, bundledPicture: g.bundledPicture || null, source: g.source || 'bundled',
       screenshots: g.screenshots || [], bundledScreenshots: g.bundledScreenshots || [],
@@ -130,4 +133,4 @@ function updates(index, installed, ctx = {}) {
     .map((g) => ({ id: g.id, name: g.name, from: installed.get(g.id), to: g.version, changelog: g.changelog }));
 }
 
-module.exports = { BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };
+module.exports = { WALLPAPER_MAX_BYTES, BUNDLED_FILE, REMOTE_URL, REPO_URL, STATE_LABEL, compareVersions, cleanEntry, parseIndex, loadBundled, merge, supported, storeRows, updates };

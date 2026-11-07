@@ -461,3 +461,52 @@ desktop ──设为壁纸──▶ wallpaper ──叫她出来──▶ out �
 | L3 | Ubuntu GNOME Wayland、KDE Wayland | 静态降级 | 设置、恢复正确，文案正确 | 截图 + `gsettings get` 前后对比 |
 
 证据统一存放在 `out/e2e/wallpaper/<平台>/`，录屏带章节 JSON，日志用 JSON lines。验收报告逐条引用证据。
+
+## 7. 实现（T-13652）
+
+本节记录 §1–§3 落到代码后的样子：文件、和设计不同的地方、已验证与未验证的项目。
+
+### 7.1 文件
+
+| 文件 | 内容 |
+| --- | --- |
+| `src/core/wallpaper-pack.js`（新） | `wallpaper@1` 的 manifest 校验（§3.2 每个字段的范围）、禁止字段（`entry` / `script` / `html` / `shader` / `url` / `video` …）、`imageSize()` 从 PNG IHDR / WebP VP8X·VP8·VP8L 文件头读尺寸（不解码）、单图 ≤ 7680×4320、图层合计 ≤ 64 MP、预览 ≤ 1920×1080；`cleanWallpaper()` 只把已知字段交给引擎。Electron / DOM 无关 |
+| `src/core/game-pack.js` | `ENGINES` 加 `wallpaper@1`；`kindOf(engine)`；`wallpaper@1` 要求 `kind: 'wallpaper'`（其余引擎仍要求 `game`），其余交给 `wallpaper-pack.js`；`namedFiles` / `spriteFiles` 分派 |
+| `src/core/game-store.js` | `checkFolder` 对壁纸包读每张图的前 64 字节交给校验（超大 / 伪造图片头在安装时拒绝）；`listInstalled` 带 `engine` / `kind` |
+| `src/core/game-index.js` | `supported()` 不变（引擎表取 `GP.ENGINES`）；`storeRows` 带 `kind`；壁纸条目 ≤ 120 MB |
+| `src/core/wallpaper-power.js`（新） | 信号 → 帧率的纯函数（§2.4）：正常 `min(设置, 包)`、电池 `batteryFps`、被遮挡 / 锁屏 / 休眠 / 小游戏 0、叫出来时 15 |
+| `src/core/wallpaper-state.js`（新） | 位置状态机（§2.2）、`reconcile()` 显示器同步、屏幕 ↔ 画面坐标换算（cover / contain + focus）、`walkClip`（可走区域裁掉任务栏 / Dock）、重试计划 0.5/1/2/4/8 s ≤ 30 s、崩溃预算（10 分钟 3 次）、不可用原因的文案（§3.6） |
+| `src/core/settings.js` · `settings-schema.js` · `admin-coverage.js` | `settings.wallpaper.*`（§2.2 的字段，外加 `confirmed` / `linuxNotice` 两个内部标记）；设置 → 桌宠行为 → 桌面壁纸 卡片；覆盖矩阵（`docs/admin-console-design.md` §12 重新生成） |
+| `src/main/wallpaper/host.js`（新） | `WallpaperHost`：进入 / 退出、叫她出来 / 回到壁纸 / 5 分钟自动回去、小游戏衔接、显示器事件（去抖 500 ms）、`powerMonitor`（suspend / resume / lock / unlock / on-battery / on-ac）、30 s 看门狗、`recover()`（Explorer 重启 / 窗口被销毁）、页面崩溃预算、热键（只在壁纸模式注册）、静态壁纸（离屏截一帧 → 系统壁纸，每小时换）、`debugState()`。Electron 通过参数注入，单测用假的 |
+| `src/main/wallpaper/linux.js`（新） | X11：`type: 'desktop'`、不设 `focusable:false`、`setIgnoreMouseEvents(true)` + `showInactive()` + 再 `setBounds`；`no-wm` 判定；自检（DESKTOP 类型且不是 override-redirect）；探针 `probe()`（`_NET_WM_WINDOW_TYPE`、`_NET_WM_STATE`、override-redirect、`_NET_CLIENT_LIST_STACKING` 位置、XShape 输入形状面积、是否活动窗口）；全屏遮挡轮询；其他 DESKTOP 窗口（桌面图标）检测。Wayland：GNOME `gsettings` / KDE `plasma-apply-wallpaperimage` 静态壁纸并恢复原值，其余 `wayland-unsupported` |
+| `src/main/wallpaper/mac.js`（新） | `type: 'desktop'` + `focusable:false` + `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false })`；JXA 读 `kCGWindowLayer` 与 Finder 桌面图标层比较的自检；自检不过改静态（NSWorkspace 设 / 恢复桌面图片） |
+| `src/main/wallpaper/win-helper.js`（新） | `HelperClient`（JSON lines、3 s 超时、崩溃自动重启一次、再崩 `dead`、spawn 前 sha256 校验）与 `createWinBackend`（attach / place / status / detach，`dipToScreenRect` 换物理像素，`shell-restarted` / `occluded` / `display-changed` / `session` 事件） |
+| `src/main/wallpaper/helper/desktop-helper.c`（新） | Windows 助手源码：0x052C → WorkerW，旧结构 / 24H2 两条路径，`SetParent`，`TaskbarCreated`、`WM_DISPLAYCHANGE`、会话锁定、2 s 遮挡检查，stdin 关闭时 detach；`helper.json` 记 sha256（本 PR 为 `null`：还没在 CI 编译） |
+| `src/main/wallpaper/wire.js`（新） | IPC：`wallpaper:boot` / `wallpaper:report`（页面），`wallpaper-state` / `wallpaper-set` / `wallpaper-exit` / `wallpaper-recall` / `wallpaper-return`（设置窗口专用），`debug-wallpaper*`（测试）；托盘「壁纸」子菜单；重启后 3 秒恢复 |
+| `src/main/wallpaper-preload.js` · `src/renderer/wallpaper/*`（新） | 壁纸页面：Pixi 按 z 画图层（drift + loop 横向循环、phases 淡入淡出、blend、opacity）、时段调色、灯光与萤火虫；她用 `game-pet` + `game-world` 在 `pet.area` 里走动、用 `pet.spots`，帧取自她的角色包（与小游戏同一套切帧）；`ticker.maxFPS` 由主进程定，0 时 `ticker.stop()`；CSP `default-src 'none'`，图片只来自 `game://` |
+| `src/main/main.js` | `showPet()` 先叫她出来；小游戏 `onOpen` / `onClosed` 交给 host（关掉小游戏回到壁纸）；托盘重建；启动恢复；`before-quit` 先 detach 再退出；壁纸包更新 / 删除时重载 / 退出 |
+| `src/main/games.js` | `pick()` 跳过壁纸包，壁纸不会在小游戏窗口里打开 |
+| `admin/src/console/pages/StoreGames.tsx` · `api.ts` · `fields.tsx` · `src/main/admin-preload.js` | 商店 → 小游戏：「壁纸」角标、筛选 全部 · 小游戏 · 壁纸；已下载的壁纸主按钮「设为壁纸」（首次确认弹窗「让她住进壁纸里？」/「先不了」）、正在使用时「退出壁纸」+ 角标「正在用作壁纸」；详情页「叫她出来 / 让她回到壁纸」；不可用时按钮禁用、悬停写原因；§3.5 的提示原文 |
+| `test/wallpaper-*.test.js` · `test/fixtures/fake-desktop-helper.js` · `test/fixtures/games/mini-wallpaper/` | 单测（见 7.3）；Node 写的假 helper（同一协议）；最小壁纸包 |
+| `e2e/wallpaper.js` · `e2e/run.js` | e2e 场景 `wallpaper`（见 7.3） |
+
+### 7.2 和设计不同 / 补充的决定
+
+- **交互**：照 §1.5，壁纸层始终点穿，没有「只有宠物区域可交互」。和她互动走「叫她出来」（热键 / 托盘 / 详情页 / `showPet()`），出来的是完整的桌宠窗口。Linux 用 `setIgnoreMouseEvents(true)`（Chromium 把 X 输入形状缩成窗口角上的 1×1，e2e 用 XShape 读出并用真实点击加对照组证明点击落到下面），Windows 由 DefView 在上面挡住输入，macOS desktop 级窗口收不到事件。
+- **叫出来时壁纸降到 15 帧**（§2.4 没写）：她不在画面里，背景继续动但更省电。
+- **静态壁纸不在 Windows 上做**：Windows 只有动态一条路，helper 不可用时如实报原因。
+- **`wallpaper.hotkey` 在设置页只读**：设置窗口的快捷键录制控件和状态标签目前只接语音快捷键（`asr.hotkey`），先在 `settings.json` 里改；列为后续。
+- **Linux 输入形状探针**用 `python3` + ctypes 调 `XShapeGetRectangles`，只在 `debug-wallpaper`（测试）里调用，正常路径不跑。
+- **版本**：壁纸引擎从应用 0.29.0 起提供，与任务 2 的壁纸包 `minAppVersion: "0.29.0"` 对齐；`package.json` 仍是 0.28.0，按仓库发布流程由 release 工作流在发版时写入 0.29.0。0.28.0 客户端对 `wallpaper@1` 条目返回 `reason: 'engine'`（单测覆盖），e2e 用 `PIXELPET_E2E_APP_VERSION=0.29.0`。
+
+### 7.3 验证
+
+- `npm test`：`wallpaper-pack`（字段边界、恶意包：代码字段、`.js` 文件、子文件夹、20000×20000 图片头、伪造图片、64 MP 上限）、`wallpaper-state`（帧率、状态机、reconcile、坐标、重试、崩溃预算）、`wallpaper-platforms`（Linux / macOS 命令与解析在模拟系统上；Windows 用假 helper 跑真实协议：attach、150% 缩放的物理坐标、no-workerw、超时、崩溃重启一次后放弃、shell-restarted、遮挡事件、sha256 被换时拒绝启动）、`wallpaper-host`（假 Electron：进入 / 拒绝 / 叫出来 / 自动回去 / 小游戏 / 帧率 / 显示器增减与分辨率 / Explorer 重启与窗口被销毁 / 重试用尽 / 看门狗 / helper 死掉 / 页面崩溃 / 退出 / 重启恢复 / macOS 改静态 / Windows 假 helper 端到端）。
+- e2e `xvfb-run -a -s "-screen 0 1280x800x24" node e2e/run.js wallpaper`（需要 openbox、x11-utils、xdotool、ImageMagick；场景先在没有窗口管理器时检查 `no-wm`，再自己起 openbox）：WP1–WP11，截图、探针原始输出和 `evidence.json` 在 `out/e2e/wallpaper/`。
+
+### 7.4 真机未验证（需要 §6.2 的真机矩阵）
+
+- **Windows 全部**：helper exe 还没编译（这台机器没有 MSVC / mingw），`helper.json` 的 sha256 是 `null`，所以当前构建在 Windows 上点「设为壁纸」会得到 `helper-missing`。需要：在 `release.yml` 加 windows-latest 编译 + 写 sha256 + `extraResources`，然后跑 W1–W8（Win10 22H2 / Win11 23H2 / 24H2 的 attach、Explorer 重启、双屏 DPI、睡眠唤醒、全屏遮挡、Defender / VirusTotal）。
+- **macOS 全部**：`type: 'desktop'` 在 Finder 图标下面、Spaces / Mission Control / Stage Manager、JXA 读层级、NSWorkspace 设 / 恢复桌面图片（M1–M3）。
+- **Linux 桌面环境**：GNOME（DING）/ Xfce / KDE 下两个 DESKTOP 窗口的先后（L1–L2）；Wayland 静态壁纸的真实 `gsettings` / `plasma-apply-wallpaperimage`（L3，单测只验了命令）；多显示器（Xvfb 造不出第二个 RandR 输出，单测覆盖 reconcile）。
+- 本机已验证的是 Linux X11（Xvfb + openbox）的动态壁纸全链路。

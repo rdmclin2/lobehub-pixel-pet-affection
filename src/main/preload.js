@@ -172,6 +172,15 @@ contextBridge.exposeInMainWorld('pet', {
   debugMicAccess: (v) => ipcRenderer.invoke('debug-mic-access', v),
   debugPetPanel: () => ipcRenderer.invoke('debug-pet-panel'),
   debugScene: () => ipcRenderer.invoke('debug-scene'),
+  // 桌面壁纸 (src/main/wallpaper/wire.js): the host's state with each window's X probe, a power signal, the hotkey,
+  // a wallpaper window destroyed from outside, the watchdog check, whether this desktop can do it
+  debugWallpaper: (opts) => ipcRenderer.invoke('debug-wallpaper', opts || {}),
+  debugWallpaperSignal: (name, value) => ipcRenderer.invoke('debug-wallpaper-signal', { name, value }),
+  debugWallpaperHotkey: () => ipcRenderer.invoke('debug-wallpaper-hotkey'),
+  debugWallpaperKill: () => ipcRenderer.invoke('debug-wallpaper-kill'),
+  debugWallpaperCheck: () => ipcRenderer.invoke('debug-wallpaper-check'),
+  debugWallpaperAvailability: () => ipcRenderer.invoke('debug-wallpaper-availability'),
+  debugWallpaperIgnore: (on) => ipcRenderer.invoke('debug-wallpaper-ignore', on),
   debugSceneToggle: (source, game) => ipcRenderer.invoke('debug-scene-toggle', { source, game }),
   debugHidePet: (minimize) => ipcRenderer.invoke('debug-hide-pet', { minimize }),
   // 检查更新… (顶栏菜单 / 托盘): the dialogs it showed, the button the next one answers with, a forced Updater state

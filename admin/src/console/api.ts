@@ -372,6 +372,8 @@ export interface StoreGameRow {
   /** installed version, or null */
   installedVersion: string | null;
   installing?: boolean;
+  /** what the pack is: a mini game (played in the game window) or a wallpaper (wallpaper@1, docs/wallpaper-mode.md) */
+  kind: 'game' | 'wallpaper';
   minAppVersion: string | null;
   name: string;
   percent?: number;
@@ -389,6 +391,33 @@ export interface StoreGameRow {
   /** installed, a newer version is out but this app cannot play it */
   updateBlocked?: 'app' | 'engine';
   version: string;
+}
+
+/** 桌面壁纸 (src/main/wallpaper/wire.js state): can this computer, which wallpaper is on, where she is */
+export interface WallpaperState {
+  available: { mode: 'live' | 'static' | null; ok: boolean; reason: string | null; text: string | null };
+  /** the first 设为壁纸 asked already (the dialog does not come again) */
+  confirmed: boolean;
+  /** 叫她出来 shortcut as the owner reads it (Ctrl+Alt+P / ⌃⌥P) */
+  hotkeyLabel: string;
+  id: string | null;
+  installed: { id: string; name: string; version: string }[];
+  lastReason: string | null;
+  lastReasonText: string | null;
+  mode: 'live' | 'static' | null;
+  on: boolean;
+  platform: string;
+  /** desktop · wallpaper (she is in it) · out (called out) · game (in a mini game) */
+  where: 'desktop' | 'game' | 'out' | 'wallpaper';
+}
+
+export interface WallpaperResult {
+  mode?: 'live' | 'static';
+  notice?: { kind: string; text: string };
+  ok: boolean;
+  reason?: string;
+  state: WallpaperState;
+  text?: string;
 }
 
 /** her progress in one game (src/main/games.js progress): today's 小事 and what she has collected */
@@ -578,6 +607,14 @@ export interface PetAdminApi {
   gameRemove: (id: string) => Promise<GameStoreResult>;
   /** 开始玩: opens the game window with her in it (main.js openScene) */
   gamePlay: (id: string) => Promise<{ ok: boolean; reason?: string; game?: string }>;
+  /** 桌面壁纸 (docs/wallpaper-mode.md §3.5): 设为壁纸 / 退出壁纸 / 叫她出来 / 让她回到壁纸 */
+  wallpaperState: (opts?: { fresh?: boolean }) => Promise<WallpaperState>;
+  wallpaperSet: (id: string, opts?: { confirmed?: boolean }) => Promise<WallpaperResult>;
+  wallpaperExit: () => Promise<WallpaperResult>;
+  wallpaperRecall: () => Promise<WallpaperResult>;
+  wallpaperReturn: () => Promise<WallpaperResult>;
+  onWallpaperChanged: (cb: (s: WallpaperState) => void) => () => void;
+  onWallpaperNotice: (cb: (n: { kind: string; reason?: string; text: string }) => void) => () => void;
   whoami: () => Promise<any>;
   /** 文件夹与系统权限 (main/permissions.js): every call answers with the current PermStatus */
   permStatus: () => Promise<PermStatus>;

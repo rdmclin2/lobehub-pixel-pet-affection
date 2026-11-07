@@ -93,10 +93,13 @@ const UPDATE = { autoCheck: true };
 // manual pick turns it off). game = the game opened last (its id), so the tray / ⌂ opens that one again.
 const SCENE = { followClock: false, dayFlow: true, hour: 8, weather: 'clear', autoWeather: false, game: '' };
 const SCENE_WEATHERS = ['clear', 'cloudy', 'rain', 'snow', 'storm', 'fog'];
+// 桌面壁纸 (docs/wallpaper-mode.md §2.2): on / which pack / where she is (in it or called out) survive a restart;
+// confirmed = the first 设为壁纸 asked already; linuxNotice = the one-time Linux desktop-icons note was shown
+const WALLPAPER = { on: false, id: '', where: 'wallpaper', displays: 'primary', fps: 30, batteryFps: 10, pauseWhenCovered: true, autoReturn: true, hotkey: 'CommandOrControl+Alt+P', mode: 'live', confirmed: false, linuxNotice: false };
 // Keys whose change only applies after the app restarts (the admin console says so and offers 立即重启).
 const RESTART_KEYS = ['system.hardwareAcceleration'];
 
-const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, music: { ...MUSIC_DEFAULTS }, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE }, local: { ...aiFolders.LOCAL_DEFAULTS } };
+const DEFAULTS = { ageGateVersion: 0, ageConfirmed: false, ageConfirmedAt: null, adultContent: false, answered: false, petScale: PET_SCALE.default, models: {}, systemRoles: {}, framings: {}, prefs: { ...PREFS }, vrmPostures: {}, visitors: [], api: { enabled: false, port: API.port, token: '' }, tts: TTS_DEFAULTS, asr: ASR_DEFAULTS, music: { ...MUSIC_DEFAULTS }, proactive: { ...PROACTIVE }, interject: { ...INTERJECT, sources: { ...INTERJECT.sources } }, affectionRules: { ...AFFECTION_RULES }, ui: { ...UI }, system: { ...SYSTEM }, update: { ...UPDATE }, scene: { ...SCENE }, wallpaper: { ...WALLPAPER }, local: { ...aiFolders.LOCAL_DEFAULTS } };
 
 // Migration: files from before 取景 have no prefs.framing (→ 'full', as they always looked); an unknown value → 'full'.
 function normalizePrefs(raw) {
@@ -180,6 +183,26 @@ function normalizeScene(raw) {
   };
 }
 
+// Files from before 桌面壁纸 have no `wallpaper` (→ off). A frame rate outside 1–30 falls back to the default.
+function normalizeWallpaper(raw) {
+  const w = raw && typeof raw === 'object' ? raw : {};
+  const fps = (v, d) => (Number.isInteger(v) && v >= 1 && v <= 30 ? v : d);
+  const bool = (k) => (typeof w[k] === 'boolean' ? w[k] : WALLPAPER[k]);
+  const id = typeof w.id === 'string' && /^[a-z0-9][a-z0-9-]{2,63}$/.test(w.id) ? w.id : '';
+  const parsed = typeof w.hotkey === 'string' && w.hotkey.trim() ? hotkeyLib.parseAccelerator(w.hotkey) : null;
+  const hk = w.hotkey === '' ? '' : parsed && parsed.ok ? parsed.accelerator : WALLPAPER.hotkey;
+  return {
+    on: bool('on') && !!id, id,
+    where: ['wallpaper', 'out'].includes(w.where) ? w.where : WALLPAPER.where,
+    displays: ['primary', 'all'].includes(w.displays) ? w.displays : WALLPAPER.displays,
+    fps: fps(w.fps, WALLPAPER.fps), batteryFps: fps(w.batteryFps, WALLPAPER.batteryFps),
+    pauseWhenCovered: bool('pauseWhenCovered'), autoReturn: bool('autoReturn'),
+    hotkey: hk,
+    mode: ['live', 'static'].includes(w.mode) ? w.mode : WALLPAPER.mode,
+    confirmed: bool('confirmed'), linuxNotice: bool('linuxNotice'),
+  };
+}
+
 // Owner-written text for a system role: no control characters but line breaks, trimmed, at most SYSTEM_ROLE_MAX.
 function cleanSystemRole(v) {
   return String(v || '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, ' ').trim().slice(0, SYSTEM_ROLE_MAX).trim();
@@ -238,6 +261,7 @@ function normalizeSettings(raw) {
   s.system = normalizeSystem(s.system);
   s.update = normalizeUpdate(s.update);
   s.scene = normalizeScene(s.scene);
+  s.wallpaper = normalizeWallpaper(s.wallpaper);
   // 本机能力 → AI 可读的文件夹 (core/ai-folders.js, T-5075): null folders = no limit (decided once by PetService.init)
   s.local = aiFolders.normalizeLocal(s.local);
   return s;
@@ -311,4 +335,4 @@ class MemorySettingsStore {
   }
 }
 
-module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };
+module.exports = { CHARACTER_MODEL, CHARACTER_ID_RE, DEFAULT_HOTKEY: hotkeyLib.DEFAULT_HOTKEY, normalizeHotkey, validateHotkey, AGE_GATE_VERSION, PET_SCALE, PREFS, VRM_POSTURES, normalizeVrmPostures, MAX_VISITORS, API, SYSTEM_ROLE_MAX, PROACTIVE, PROACTIVE_RANGE, INTERJECT, INTERJECT_SOURCES, INTERJECT_RANGE, INTERJECT_THRESHOLD_RANGE, DECISION_MODEL_RE, normalizeInterject, AFFECTION_RULES, DAILY_CAP_RANGE, UI, THEMES, SYSTEM, UPDATE, RESTART_KEYS, SCENE, SCENE_WEATHERS, normalizeScene, WALLPAPER, normalizeWallpaper, normalizeUpdate, normalizeProactive, normalizeAffectionRules, normalizeUi, normalizeSystem, cleanSystemRole, normalizePrefs, normalizeApi, clampScale, petScale, normalizeSettings, needsAgeGate, answerAgeGate, setAdultContent, SettingsStore, MemorySettingsStore };

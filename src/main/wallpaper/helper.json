@@ -1,0 +1,5 @@
+{
+  "file": "pixelpet-desktop-helper.exe",
+  "sha256": null,
+  "note": "Written by the Windows build (CI compiles helper/desktop-helper.c and records its sha256 here). null: this copy of the app has no helper, so on Windows 设为壁纸 reports helper-missing instead of starting an unchecked file."
+}

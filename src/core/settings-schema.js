@@ -138,6 +138,19 @@ add('scene.hour', 'behavior', '小游戏', '时刻', 'slider', { desc: '两个�
 add('scene.weather', 'behavior', '小游戏', '天气', 'segmented', { desc: '切换后云、雨、雪、雾和画面色调在 3 秒内换过去。', options: opts([['clear', '晴朗'], ['cloudy', '多云'], ['rain', '小雨'], ['storm', '雷雨'], ['snow', '下雪'], ['fog', '起雾']]) });
 add('scene.autoWeather', 'behavior', '小游戏', '天气自己变', 'switch', { desc: '每隔 3–8 分钟自己换一次天气；手动选天气会关掉它。' });
 add('scene.game', 'behavior', '小游戏', '上次玩的小游戏', 'readonly', { internal: true, desc: '内部记录：托盘和面板 ⌂ 打开的是这个小游戏。' });
+// 桌面壁纸 (docs/wallpaper-mode.md §2.2): 设为壁纸 / 退出壁纸 are in 商店 → 小游戏; here how it runs
+add('wallpaper.displays', 'behavior', '桌面壁纸', '显示在', 'segmented', { desc: '主显示器：只在主屏上铺壁纸；所有显示器：每块屏各铺一张，她只在进入壁纸时所在的那块屏上。', options: opts([['primary', '主显示器'], ['all', '所有显示器']]) });
+add('wallpaper.fps', 'behavior', '桌面壁纸', '帧率上限', 'slider', { desc: '壁纸每秒最多画几帧；像素风 30 帧足够，调低更省电。壁纸包也可以要求更低的上限。', min: 1, max: 30, step: 1, unit: '帧' });
+add('wallpaper.batteryFps', 'behavior', '桌面壁纸', '用电池时', 'slider', { desc: '笔记本拔掉电源后壁纸降到这个帧率。', min: 1, max: 30, step: 1, unit: '帧' });
+add('wallpaper.pauseWhenCovered', 'behavior', '桌面壁纸', '被挡住时暂停', 'switch', { desc: '全屏游戏、视频、放映幻灯片或最大化窗口盖住壁纸时，壁纸停在最后一帧，不耗电。' });
+add('wallpaper.autoReturn', 'behavior', '桌面壁纸', '自动回到壁纸', 'switch', { desc: '叫她出来后，5 分钟没跟她互动，她就自己回到壁纸里。' });
+add('wallpaper.mode', 'behavior', '桌面壁纸', '壁纸类型', 'segmented', { desc: '动态：她在桌面背景里走动；静态：把她此刻的样子做成一张桌面图片，按时段每小时换一次（更省电，Wayland 桌面只能用静态）。', options: opts([['live', '动态'], ['static', '静态']]) });
+add('wallpaper.hotkey', 'behavior', '桌面壁纸', '叫她出来的快捷键', 'readonly', { internal: true, desc: '只在壁纸模式下注册；按下时她从壁纸里出来到桌面上。默认 Ctrl+Alt+P（macOS 是 ⌃⌥P）。' });
+add('wallpaper.on', 'behavior', '桌面壁纸', '壁纸模式开着', 'readonly', { internal: true, desc: '内部记录：重启后回到壁纸里。在 商店 → 小游戏 → 壁纸 设为壁纸或退出壁纸。' });
+add('wallpaper.id', 'behavior', '桌面壁纸', '当前壁纸', 'readonly', { internal: true, desc: '内部记录：正在用作壁纸的壁纸包。' });
+add('wallpaper.where', 'behavior', '桌面壁纸', '她在哪里', 'readonly', { internal: true, desc: '内部记录：在壁纸里，或被叫出来在桌面上。' });
+add('wallpaper.confirmed', 'behavior', '桌面壁纸', '看过设为壁纸的说明', 'readonly', { internal: true, desc: '内部标记：第一次设为壁纸时的确认弹窗之后不再出现。' });
+add('wallpaper.linuxNotice', 'behavior', '桌面壁纸', '看过 Linux 桌面图标提示', 'readonly', { internal: true, desc: '内部标记：Linux 上第一次进入壁纸时提示过一次如何退出。' });
 add('petScaleSet', 'behavior', '大小与取景', '手动选过大小', 'readonly', { internal: true, desc: '内部标记：选过之后不再跟随默认大小。' });
 
 // ---- 主动行为与好感度 ------------------------------------------------------------------------------------

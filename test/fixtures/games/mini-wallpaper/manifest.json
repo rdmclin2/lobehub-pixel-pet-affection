@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "kind": "wallpaper",
+  "engine": "wallpaper@1",
+  "id": "mini-wallpaper",
+  "name": "测试小院壁纸",
+  "version": "1.0.0",
+  "description": "测试用的最小壁纸包：天空（白天 / 夜晚两张）、飘过的云和一片草地，她在草地上走动、坐下。",
+  "credit": "测试素材：ImageMagick 生成",
+  "canvas": { "width": 1280, "height": 720, "background": "#0b0f0c", "fit": "cover", "focus": [0.5, 0.7] },
+  "preview": "preview.webp",
+  "layers": [
+    { "id": "sky", "image": "sky-day.webp", "z": 0, "phases": ["dawn", "day", "dusk"] },
+    { "id": "night", "image": "sky-night.webp", "z": 0, "phases": ["night"] },
+    { "id": "cloud", "image": "cloud.png", "z": 5, "drift": [18, 0], "loop": true, "opacity": 0.9 },
+    { "id": "ground", "image": "ground.png", "z": 10 }
+  ],
+  "sky": { "phases": true, "weather": ["clear", "cloudy"], "tint": true },
+  "fx": { "fireflies": 6, "lights": [{ "x": 956, "y": 482, "r": 60, "phases": ["dusk", "night"] }] },
+  "pet": {
+    "height": 120, "speed": 60, "spawn": [640, 600], "z": 20,
+    "area": [[60, 560], [1220, 560], [1220, 650], [60, 650]],
+    "blocked": [{ "cx": 960, "cy": 560, "rx": 90, "ry": 20 }],
+    "spots": [
+      { "id": "bench", "at": [300, 600], "anim": "sit", "seconds": [8, 20], "face": "right" },
+      { "id": "nap", "at": [1100, 620], "anim": "sleep", "seconds": [20, 40], "phases": ["night"] }
+    ]
+  },
+  "power": { "fps": 24 }
+}
