@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Live2D 本地素材库清单 (live2d-library/manifest.json)",
+  "description": "字段含义见 live2d-library/README.md §3。标注 auto 的字段由 scripts/live2d-library-check.js 测量回填，手写会被覆盖。",
+  "type": "object",
+  "required": ["schema", "entries"],
+  "properties": {
+    "schema": { "const": 1 },
+    "description": { "type": "string" },
+    "updatedAt": { "type": "string", "description": "auto：最近一次校验日期 (YYYY-MM-DD)" },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "flag": { "enum": [true, false, "unknown"] },
+    "entry": {
+      "type": "object",
+      "required": ["id", "name", "channel", "sourceUrl", "author", "downloadStatus", "failReason", "license", "licenseNote", "licenseFlags", "cubismVersion", "appSupported", "files", "hasPhysics", "expressionCount", "motionCount", "textureMaxSize", "sizeBytes", "sha256", "qualityTier", "previewPath", "notes"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^(gh|bili|forum|qq|steam|booth|nizima|official|other)-[a-z0-9]+(-[a-z0-9]+)*$", "description": "kebab-case，带来源前缀；等于 models/<id>/ 目录名和 _downloads/<id>.<ext> 文件名" },
+        "name": { "type": "string" },
+        "channel": { "enum": ["github", "bilibili", "forum", "qq", "steam-workshop", "booth", "nizima", "official", "other"] },
+        "sourceUrl": { "type": "string", "description": "发布页 http(s) URL；未知时为空串" },
+        "author": { "type": "string" },
+        "downloadStatus": { "enum": ["downloaded", "failed", "not-downloadable", "login-required", "paid", "pending"] },
+        "failReason": { "type": ["string", "null"], "description": "downloaded / pending 以外的状态必填" },
+        "license": { "type": "string", "description": "授权类型，如 MIT、CC BY-NC 4.0、Live2D Free Material License、作者自定条款、unknown" },
+        "licenseNote": { "type": "string", "description": "条款原文摘录或条款链接" },
+        "licenseFlags": {
+          "type": "object",
+          "required": ["commercial", "redistribute", "modify", "attribution", "needsAuthorization"],
+          "properties": {
+            "commercial": { "$ref": "#/$defs/flag" },
+            "redistribute": { "$ref": "#/$defs/flag" },
+            "modify": { "$ref": "#/$defs/flag" },
+            "attribution": { "$ref": "#/$defs/flag" },
+            "needsAuthorization": { "$ref": "#/$defs/flag" }
+          }
+        },
+        "cubismVersion": { "enum": [2, 3, 4, 5, "unknown"], "description": "auto：.moc3 头部版本字节；.model.json 为 2" },
+        "appSupported": { "type": "boolean", "description": "auto：Cubism 3+ 为 true（应用只带 Cubism 4 运行时，不支持 Cubism 2）" },
+        "files": { "type": "array", "items": { "type": "string" }, "description": "auto：models/<id>/ 下的 *.model3.json / *.model.json 相对路径" },
+        "hasPhysics": { "type": "boolean", "description": "auto" },
+        "expressionCount": { "type": "integer", "description": "auto：.exp3.json / 表情文件数（取目录内最多的那个模型）" },
+        "expressionParamCount": { "type": "integer", "description": "auto：cdi3 里直接驱动表情的参数数（PARAM_EXP* 等，大肥鱼走这种）" },
+        "motionCount": { "type": "integer", "description": "auto" },
+        "textureMaxSize": { "type": "integer", "description": "auto：最大贴图边长 px" },
+        "sizeBytes": { "type": "integer", "description": "auto：models/<id>/ 解压后总字节" },
+        "missingFiles": { "type": "array", "items": { "type": "string" }, "description": "auto：模型引用但不存在的文件" },
+        "sha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "auto（有 _downloads/<id>.<ext> 时）：原始压缩包 sha256" },
+        "qualityTier": { "enum": ["A", "B", "C", null], "description": "auto：见 README §4；qualityTierManual=true 时保留手填值" },
+        "qualityTierManual": { "type": "boolean" },
+        "previewPath": { "type": ["string", "null"], "description": "相对 live2d-library/ 的预览图路径（previews/<id>.png，本地不提交）" },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

@@ -30,3 +30,8 @@ src/admin-ui/
 catalog/voicepacks/
 # 小游戏的包（源码在 rdmclin2/pixel-pet-mini-games）：node scripts/fetch-game-packs.js 从 CDN 取到这里，开发时 PIXELPET_DEV_GAMES=1 读它
 catalog/games/
+# Live2D 本地素材库 (live2d-library/README.md)：第三方模型、原始压缩包和预览图只存本地，不进公开仓库、不进商店；
+# 只提交 manifest.json / manifest.schema.json / README.md
+live2d-library/models/
+live2d-library/_downloads/
+live2d-library/previews/

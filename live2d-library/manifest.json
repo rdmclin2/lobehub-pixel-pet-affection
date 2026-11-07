@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "description": "Live2D 本地素材库清单。字段定义见 live2d-library/README.md 与 manifest.schema.json；可测量字段由 node scripts/live2d-library-check.js 回填。",
+  "entries": [],
+  "updatedAt": "2026-11-07"
+}
