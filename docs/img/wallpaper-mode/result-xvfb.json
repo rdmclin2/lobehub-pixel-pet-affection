@@ -1,0 +1,80 @@
+{
+  "electron": "45.0.0",
+  "wm": "Name: Openbox\nClass: \nPID: N/A\nWindow manager's \"showing the desktop\" mode: OFF",
+  "steps": [
+    {
+      "id": "P0-ewmh-wm",
+      "ok": true,
+      "hasWm": true,
+      "raw": "_NET_SUPPORTING_WM_CHECK(WINDOW): window id # 0x20011f"
+    },
+    {
+      "id": "P1-window-type",
+      "ok": true,
+      "wall": "0x400002",
+      "raw": "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP",
+      "overrideRedirect": "no"
+    },
+    {
+      "id": "P2a-below-normal",
+      "ok": true,
+      "pixelAtNormalCentre": "#FFFFFF",
+      "netClientListStacking_bottomToTop": "_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a",
+      "wall": "0x400002",
+      "normal": "0x40000a"
+    },
+    {
+      "id": "P2b-still-below-after-raise",
+      "ok": true,
+      "tried": "moveTop + wmctrl add,above + wmctrl -a + xdotool windowraise",
+      "pixelAtNormalCentre": "#FFFFFF",
+      "netClientListStacking_bottomToTop": "_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x400002, 0x40000a",
+      "activeAfter": "0x400002"
+    },
+    {
+      "id": "P3-click-through",
+      "ok": true,
+      "wallpaperClicks": 0,
+      "normalClicks": 1
+    },
+    {
+      "id": "P4-no-focus-steal",
+      "ok": true,
+      "activeBefore": "0x40000a",
+      "activeAfterWallpaperClick": "0x0",
+      "wall": "0x400002"
+    },
+    {
+      "id": "P3b-control-input-on",
+      "ok": true,
+      "wallpaperClicksWithInputOn": 1,
+      "activeAfter": "0x400002"
+    },
+    {
+      "id": "P5-frame-budget",
+      "ok": true,
+      "framesIn2s": {
+        "cap30": 61,
+        "cap15": 30,
+        "paused": 0
+      }
+    },
+    {
+      "id": "P8-focusable-false-is-override-redirect",
+      "ok": true,
+      "overrideRedirect": "yes",
+      "pixelAtNormalCentre": "#FFFF00",
+      "meaning": "not white = the focusable:false desktop window covers the normal window"
+    },
+    {
+      "id": "P6-display-change",
+      "ok": "skip",
+      "why": "Xvfb has a single fixed RandR mode; run with PROBE_XSERVER=xvnc"
+    },
+    {
+      "id": "P7-multi-monitor",
+      "ok": "skip",
+      "why": "see the Xvnc run"
+    }
+  ]
+}

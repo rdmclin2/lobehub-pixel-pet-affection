@@ -1,0 +1,6 @@
+{
+  "hasWm": false,
+  "type": "_NET_WM_WINDOW_TYPE(ATOM) = _NET_WM_WINDOW_TYPE_DESKTOP",
+  "overrideRedirect": "no",
+  "meaning": "no EWMH WM: nothing keeps a DESKTOP window below — the app refuses wallpaper mode (reason no-wm)"
+}
