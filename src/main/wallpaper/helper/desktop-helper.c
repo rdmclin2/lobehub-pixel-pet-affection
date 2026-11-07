@@ -2,9 +2,14 @@
  * pixelpet-desktop-helper.exe — Pixel Pet 桌面壁纸助手 (docs/wallpaper-mode.md §1.1).
  *
  * Puts the app's wallpaper window into the WorkerW behind the desktop icons and keeps it there. Plain Win32 C,
- * user32 / kernel32 / ntdll only; no hooks, no injection, no network, no files, asInvoker. Built in CI:
- *   cl /O1 /GS /W4 /DUNICODE /D_UNICODE desktop-helper.c user32.lib /link /SUBSYSTEM:CONSOLE
- * then its sha256 goes into ../helper.json (src/main/wallpaper/win-helper.js refuses any other file).
+ * user32 / shell32 / wtsapi32 / kernel32 / ntdll only; no hooks, no injection, no network, no files, asInvoker.
+ * Built by `npm run build:win-helper` (scripts/build-win-helper.js): cross-compiled with mingw-w64 on Linux (CI:
+ * the win-helper job in .github/workflows/release.yml / test.yml), reproducible (no PE timestamp, no build id);
+ * its sha256 goes into ../helper.json and src/main/wallpaper/win-helper.js refuses to start any other file.
+ *
+ * Arguments (for checks only; the app starts it with none):
+ *   --version     {"version":"…","arch":"x64"} and exit 0
+ *   --self-test   runs the request parser on fixed lines, looks for Progman / WorkerW, prints one JSON report, exit 0
  *
  * Protocol (src/main/wallpaper/win-helper.js): one JSON object per line.
  *   stdin   {"id":1,"cmd":"attach","hwnd":"0x1A2B3C","rect":{"x":0,"y":0,"w":2560,"h":1440}}
@@ -16,7 +21,7 @@
  *           {"event":"occluded","on":true,"why":"fullscreen"}
  * stdin closing (the app quit) detaches every window it attached and exits.
  *
- * NOT BUILT OR RUN ON WINDOWS YET: see docs §6.2 W1–W8 for the real-machine checks.
+ * NOT RUN ON REAL WINDOWS YET (only under wine): see docs §6.2 W1–W8 for the real-machine checks.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -26,9 +31,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _MSC_VER
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "wtsapi32.lib")
+#endif
+
+#define HELPER_VERSION "1.0.0"
 
 #define MAX_ATTACHED 16
 typedef struct { HWND hwnd; LONG_PTR style; LONG_PTR exstyle; HWND parent; } Attached;
@@ -47,8 +56,9 @@ static void emit(const char *line) {
 
 typedef LONG (WINAPI *RtlGetVersionFn)(PRTL_OSVERSIONINFOW);
 static DWORD build_number(void) {
-  RTL_OSVERSIONINFOW v = { sizeof(v) };
-  RtlGetVersionFn f = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+  RTL_OSVERSIONINFOW v;
+  RtlGetVersionFn f = (RtlGetVersionFn)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+  ZeroMemory(&v, sizeof v); v.dwOSVersionInfoSize = sizeof v;
   if (f && f(&v) == 0) return v.dwBuildNumber;
   return 0;
 }
@@ -161,7 +171,7 @@ static void check_occlusion(void) {
   if (!on && fg) {
     WCHAR cls[64] = {0}; GetClassNameW(fg, cls, 64);
     if (wcscmp(cls, L"Progman") && wcscmp(cls, L"WorkerW")) {
-      RECT wr; MONITORINFO mi = { sizeof(mi) };
+      RECT wr; MONITORINFO mi; ZeroMemory(&mi, sizeof mi); mi.cbSize = sizeof mi;
       if (GetWindowRect(fg, &wr) && GetMonitorInfoW(MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST), &mi)) {
         RECT m = mi.rcMonitor; RECT in; IntersectRect(&in, &wr, &m);
         double cover = (double)(in.right - in.left) * (in.bottom - in.top) / ((double)(m.right - m.left) * (m.bottom - m.top));
@@ -196,9 +206,44 @@ static DWORD WINAPI reader(LPVOID unused) {
   return 0;
 }
 
-int main(void) {
+/* --self-test: the parser on fixed lines (answers go to stdout like real ones), then what this desktop looks like */
+static int g_selftest_errors = 0;
+static void expect_int(const char *line, const char *key, long long want) {
+  long long v = -1; if (!json_int(line, key, &v) || v != want) g_selftest_errors++;
+}
+static void expect_str(const char *line, const char *key, const char *want) {
+  char v[64] = {0}; if (!json_str(line, key, v, sizeof v) || strcmp(v, want)) g_selftest_errors++;
+}
+static int self_test(void) {
+  const char *att = "{\"id\":7,\"cmd\":\"attach\",\"hwnd\":\"0x1A2B3C\",\"rect\":{\"x\":-1920,\"y\":0,\"w\":2560,\"h\":1440}}";
+  char b[512]; HWND progman, defview_top = NULL, ww;
+  expect_int(att, "id", 7); expect_int(att, "x", -1920); expect_int(att, "y", 0); expect_int(att, "w", 2560); expect_int(att, "h", 1440);
+  expect_str(att, "cmd", "attach"); expect_str(att, "hwnd", "0x1A2B3C");
+  if (_strtoui64("0x1A2B3C", NULL, 16) != 0x1A2B3C) g_selftest_errors++;
+  { char v[4]; if (json_str("{\"cmd\":\"waytoolongforthebuffer\"}", "cmd", v, sizeof v)) g_selftest_errors++; } /* overflow refused */
+  /* the request handler itself: these must answer with an error, never touch a window */
+  handle("{\"id\":101}");                                              /* → bad-request */
+  handle("{\"id\":102,\"cmd\":\"status\"}");                          /* → bad-hwnd */
+  handle("{\"id\":103,\"cmd\":\"status\",\"hwnd\":\"0x0\"}");          /* → bad-hwnd (not a window) */
+  handle("{\"id\":104,\"cmd\":\"explode\",\"hwnd\":\"0x0\"}");         /* → bad-hwnd before the command */
+  progman = FindWindowW(L"Progman", NULL);
+  EnumWindows(find_defview, (LPARAM)&defview_top);
+  ww = progman ? FindWindowExW(progman, NULL, L"WorkerW", NULL) : NULL;
+  snprintf(b, sizeof b,
+    "{\"selfTest\":true,\"version\":\"%s\",\"ptrBits\":%d,\"osBuild\":%lu,\"parser\":%s,\"parserErrors\":%d,"
+    "\"progman\":%s,\"legacyWorkerW\":%s,\"progmanChildWorkerW\":%s,\"taskbarCreatedMsg\":%s}",
+    HELPER_VERSION, (int)(sizeof(void *) * 8), (unsigned long)build_number(), g_selftest_errors ? "false" : "true", g_selftest_errors,
+    progman ? "true" : "false", defview_top ? "true" : "false", ww ? "true" : "false", RegisterWindowMessageW(L"TaskbarCreated") ? "true" : "false");
+  emit(b);
+  return g_selftest_errors ? 1 : 0;
+}
+
+int main(int argc, char **argv) {
   WNDCLASSW wc = {0}; HWND msg; MSG m;
   InitializeCriticalSection(&g_out);
+  if (argc > 1 && !strcmp(argv[1], "--version")) { emit("{\"version\":\"" HELPER_VERSION "\",\"arch\":\"x64\"}"); return 0; }
+  if (argc > 1 && !strcmp(argv[1], "--self-test")) return self_test();
+  if (argc > 1) { fprintf(stderr, "usage: pixelpet-desktop-helper [--version | --self-test]\n"); return 2; }
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   g_taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
   wc.lpfnWndProc = wndproc; wc.hInstance = GetModuleHandleW(NULL); wc.lpszClassName = L"PixelPetDesktopHelper";

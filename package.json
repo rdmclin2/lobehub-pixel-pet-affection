@@ -25,7 +25,9 @@
     "lint:design": "node .agents/skills/lobe-design/scripts/lint-lobe.mjs admin/src",
     "predist:mac": "npm run build:admin",
     "dist:mac": "electron-builder --mac --universal --publish never",
-    "predist:win": "npm run build:admin",
+    "build:win-helper": "node scripts/build-win-helper.js",
+    "check:win-helper": "node scripts/check-win-helper.js",
+    "predist:win": "npm run build:admin && node scripts/build-win-helper.js --ensure",
     "dist:win": "electron-builder --win --x64 --publish never",
     "predist:linux": "npm run build:admin",
     "dist:linux": "electron-builder --linux tar.gz --x64 --publish never",
@@ -81,6 +83,7 @@
       "!**/baked-dances/**",
       "!**/*.bvh",
       "!**/*.pmx",
+      "!src/main/wallpaper/helper/**",
       "package.json"
     ],
     "afterSign": "scripts/mac-sign.js",
@@ -123,6 +126,12 @@
           "arch": [
             "x64"
           ]
+        }
+      ],
+      "extraResources": [
+        {
+          "from": "build/win-helper/pixelpet-desktop-helper.exe",
+          "to": "pixelpet-desktop-helper.exe"
         }
       ],
       "icon": "build/icon.png",

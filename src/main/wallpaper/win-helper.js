@@ -1,15 +1,20 @@
 'use strict';
 // 桌面壁纸 · Windows (docs/wallpaper-mode.md §1.1). The wallpaper window goes into the WorkerW behind the desktop icons
 // (SHELLDLL_DefView). That takes Win32 calls (SendMessageTimeout 0x052C to Progman, EnumWindows, SetParent …), which a
-// small helper exe does — pixelpet-desktop-helper.exe (src/main/wallpaper/helper/desktop-helper.c, built in CI with
-// MSVC, no node-gyp): its own process, so a hung Explorer or a crash never takes the app with it, and its message loop
+// small helper exe does — pixelpet-desktop-helper.exe (src/main/wallpaper/helper/desktop-helper.c, cross-compiled
+// with mingw-w64 by scripts/build-win-helper.js before dist:win, no node-gyp): its own process, so a hung Explorer or a crash never takes the app with it, and its message loop
 // hears TaskbarCreated (Explorer restarted), WM_DISPLAYCHANGE, the foreground window and session lock / unlock.
 //
 // Protocol: JSON lines on stdin / stdout. → { id, cmd: 'attach' | 'place' | 'status' | 'detach', hwnd, rect }
 // ← { id, ok, … } | { id, error } | { event: 'shell-restarted' | 'occluded' | 'display-changed' | 'session', … }
 // stdin closing (the app quit) makes it detach and exit.
 //
-// HelperClient: spawn (after a sha256 check against helper.json: a replaced exe is refused, `helper-tampered`),
+// Integrity: the build writes the exe's sha256 into ./helper.json, which ships inside app.asar with this code; the exe
+// itself ships unpacked as resources/pixelpet-desktop-helper.exe (electron-builder win.extraResources). The expected
+// hash is never read from next to the exe, so swapping both files in resources/ does not get a foreign exe started.
+//
+// HelperClient: spawn (after a sha256 check against helper.json on every start, restarts included: a replaced exe is
+// refused, `helper-tampered`; a missing one `helper-missing`),
 // 3 s per request, one automatic restart after a crash; a second crash → 'dead' (the host leaves wallpaper mode,
 // `helper-failed`). createWinBackend wraps it in the same backend interface as linux.js / mac.js.
 //
@@ -25,8 +30,8 @@ const { EventEmitter } = require('node:events');
 const HELPER_NAME = 'pixelpet-desktop-helper.exe';
 const TIMEOUT_MS = 3000;
 
-// helper.json: { file, sha256 } written by the build (null sha256: no helper built into this copy of the app)
-function readManifest(dir) {
+// helper.json: { file, sha256, … } written by scripts/build-win-helper.js (null sha256: no helper in this copy of the app)
+function readManifest(dir = __dirname) {
   try { return JSON.parse(fs.readFileSync(path.join(dir, 'helper.json'), 'utf8')); } catch { return null; }
 }
 const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -57,7 +62,9 @@ class HelperClient extends EventEmitter {
     const exe = this.command[0];
     if (this.expectSha !== null) {
       if (!fs.existsSync(exe)) return { ok: false, reason: 'helper-missing' };
-      if (sha256Of(exe) !== this.expectSha) return { ok: false, reason: 'helper-tampered' };
+      let have;
+      try { have = sha256Of(exe); } catch (e) { this.log(e); return { ok: false, reason: 'helper-missing' }; }
+      if (have !== this.expectSha) return { ok: false, reason: 'helper-tampered' };
     }
     let child;
     try { child = this.spawnFn(exe, this.command.slice(1), { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true }); } catch (e) { this.log(e); return { ok: false, reason: 'helper-failed' }; }
@@ -138,14 +145,15 @@ function hwndOf(win) {
   return `0x${v.toString(16)}`;
 }
 
-// helperDir: where helper.json and the exe are (process.resourcesPath in a build); client: a HelperClient (tests)
-function createWinBackend({ helperDir = null, client = null, screen = null, spawn = realSpawn, log = () => {} } = {}) {
+// helperDir: where the exe is (process.resourcesPath in a build, build/win-helper from source); manifest: the expected
+// { file, sha256 } (default: ./helper.json next to this code, i.e. inside app.asar); client: a HelperClient (tests)
+function createWinBackend({ helperDir = null, manifest = readManifest(), client = null, screen = null, spawn = realSpawn, log = () => {} } = {}) {
   const ev = new EventEmitter();
   let helper = client;
   let startProblem = null;
   if (!helper) {
-    const mf = helperDir ? readManifest(helperDir) : null;
-    if (!mf || !mf.sha256) startProblem = 'helper-missing';
+    const mf = manifest;
+    if (!helperDir || !mf || !/^[0-9a-f]{64}$/.test(mf.sha256 || '')) startProblem = 'helper-missing';
     else helper = new HelperClient({ command: [path.join(helperDir, mf.file || HELPER_NAME)], expectSha: mf.sha256, spawn, log });
   }
   if (helper) {

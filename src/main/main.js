@@ -1721,7 +1721,7 @@ app.whenReady().then(() => {
   // Windows helper in resources/), her desktop window as the host sees it, the IPC and tray items (wallpaper/wire.js)
   wallpaper = new WallpaperHost({
     electron: { BrowserWindow, screen, powerMonitor },
-    backend: wallpaperBackend(process.platform, { screen, helperDir: app.isPackaged ? process.resourcesPath : path.join(__dirname, 'wallpaper'), log: logError }),
+    backend: wallpaperBackend(process.platform, { screen, helperDir: app.isPackaged ? process.resourcesPath : path.join(__dirname, '..', '..', 'build', 'win-helper'), log: logError }),
     packs: games,
     prefs: () => service.settings.wallpaper,
     save: (patch) => service.setSection('wallpaper', patch),

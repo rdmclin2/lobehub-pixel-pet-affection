@@ -60,7 +60,7 @@ Electron 侧：`win.getNativeWindowHandle()` 拿到 HWND（Buffer，x64 下用 `
 
 | 途径 | 结论 | 理由 |
 | --- | --- | --- |
-| **随应用发布的 helper exe**（选用） | ✅ 主选型 | 用纯 Win32 C 写，约 100–150 KB，只依赖 user32 / kernel32 / ntdll。在 CI 里编译：`release.yml` 增加一个 `windows-latest` job，用 MSVC `cl /O1 /GS`，**不走 node-gyp**，和 Electron ABI 无关，开发者本机不需要编译。它是独立进程，崩了或卡住（比如 Explorer 不回 `SendMessage`）都拖不死主进程。它自带消息循环，可以收 `TaskbarCreated`、`WM_DISPLAYCHANGE`、前台窗口变化这些事件（§1.5）。 |
+| **随应用发布的 helper exe**（选用） | ✅ 主选型 | 用纯 Win32 C 写，约 50 KB，只依赖 user32 / shell32 / wtsapi32 / kernel32 / msvcrt（系统自带）。在 Linux 上用 mingw-w64 交叉编译（`npm run build:win-helper`，CI 里是 `release.yml` 的 `win-helper` job，见 §7.5），**不走 node-gyp**，和 Electron ABI 无关，开发者本机不需要编译。它是独立进程，崩了或卡住（比如 Explorer 不回 `SendMessage`）都拖不死主进程。它自带消息循环，可以收 `TaskbarCreated`、`WM_DISPLAYCHANGE`、前台窗口变化这些事件（§1.5）。 |
 | PowerShell + `Add-Type`（P/Invoke） | ❌ 不用（只留一个开发诊断脚本） | ① 企业设备用 AppLocker / WDAC 开了 **Constrained Language Mode** 时，`Add-Type` 直接被禁。② `Add-Type` 运行时调 csc 编译，往 `%TEMP%` 写 DLL，冷启动 1–3 秒，每次都经过 AMSI 扫描。③「隐藏的 powershell.exe 用 P/Invoke 调 user32 的 SetParent / FindWindowEx」是 EDR 常见的告警特征（ATT&CK T1059.001）。④ 监听 Explorer 重启要一直挂着一个 powershell 进程（约 60 MB）。 |
 | koffi 等预编译 FFI（N-API） | ❌ 不用 | 虽然不用编译，但原生代码进了主进程：调 user32 卡住时阻塞主线程，崩溃时带走整个应用；多出约 5 MB；杀软看到的特征和 PowerShell 方案一样。 |
 
@@ -89,7 +89,7 @@ Electron 侧：`win.getNativeWindowHandle()` 拿到 HWND（Buffer，x64 下用 `
   ② 上传 VirusTotal，记录检出数；
   ③ 如有误报，到 Microsoft WDSI 提交误报申诉。
 - **降低误报的做法**：不注入、不装钩子、不联网、不写文件、不需要管理员权限（manifest 写 `asInvoker`），不打包压缩（不用 UPX）；版本资源写清产品名和用途（「Pixel Pet 桌面壁纸助手」），并声明 `PerMonitorV2` DPI 感知。
-- **完整性**：构建时把 helper 的 sha256 写进 `src/main/wallpaper/helper.json`。主进程 spawn 前先校验 sha256，被替换了就拒绝启动，原因记为 `helper-tampered`。
+- **完整性**：构建时把 helper 的 sha256 写进 `src/main/wallpaper/helper.json`（随代码进 `app.asar`；exe 本身在 `resources/`，期望值不从 exe 旁边读）。主进程每次 spawn 前（含崩溃后的自动重启）先校验 sha256，被替换了就拒绝启动，原因记为 `helper-tampered`；文件不在记为 `helper-missing`。
 - **失败即降级**：helper 起不来（被杀软隔离、`ENOENT`）、attach 返回 `no-workerw`，或 3 次重试都失败：不进壁纸模式，她留在桌面。弹窗原文：「这台电脑上没法把她放进壁纸：壁纸助手没能启动（可能被安全软件拦下了）。她先留在桌面上。」不同原因换后半句，见 §3.6。
 
 #### 1.1.4 Win10 / Win11 差异
@@ -481,7 +481,7 @@ desktop ──设为壁纸──▶ wallpaper ──叫她出来──▶ out �
 | `src/main/wallpaper/linux.js`（新） | X11：`type: 'desktop'`、不设 `focusable:false`、`setIgnoreMouseEvents(true)` + `showInactive()` + 再 `setBounds`；`no-wm` 判定；自检（DESKTOP 类型且不是 override-redirect）；探针 `probe()`（`_NET_WM_WINDOW_TYPE`、`_NET_WM_STATE`、override-redirect、`_NET_CLIENT_LIST_STACKING` 位置、XShape 输入形状面积、是否活动窗口）；全屏遮挡轮询；其他 DESKTOP 窗口（桌面图标）检测。Wayland：GNOME `gsettings` / KDE `plasma-apply-wallpaperimage` 静态壁纸并恢复原值，其余 `wayland-unsupported` |
 | `src/main/wallpaper/mac.js`（新） | `type: 'desktop'` + `focusable:false` + `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false })`；JXA 读 `kCGWindowLayer` 与 Finder 桌面图标层比较的自检；自检不过改静态（NSWorkspace 设 / 恢复桌面图片） |
 | `src/main/wallpaper/win-helper.js`（新） | `HelperClient`（JSON lines、3 s 超时、崩溃自动重启一次、再崩 `dead`、spawn 前 sha256 校验）与 `createWinBackend`（attach / place / status / detach，`dipToScreenRect` 换物理像素，`shell-restarted` / `occluded` / `display-changed` / `session` 事件） |
-| `src/main/wallpaper/helper/desktop-helper.c`（新） | Windows 助手源码：0x052C → WorkerW，旧结构 / 24H2 两条路径，`SetParent`，`TaskbarCreated`、`WM_DISPLAYCHANGE`、会话锁定、2 s 遮挡检查，stdin 关闭时 detach；`helper.json` 记 sha256（本 PR 为 `null`：还没在 CI 编译） |
+| `src/main/wallpaper/helper/desktop-helper.c`（新） | Windows 助手源码：0x052C → WorkerW，旧结构 / 24H2 两条路径，`SetParent`，`TaskbarCreated`、`WM_DISPLAYCHANGE`、会话锁定、2 s 遮挡检查，stdin 关闭时 detach；`--version` / `--self-test`（只做检查用）。同目录 `desktop-helper.rc` + `.manifest`：版本资源与 `asInvoker` / `PerMonitorV2` 清单。`helper.json` 记 exe 的 sha256 和源码的 `sourceSha256`（§7.5） |
 | `src/main/wallpaper/wire.js`（新） | IPC：`wallpaper:boot` / `wallpaper:report`（页面），`wallpaper-state` / `wallpaper-set` / `wallpaper-exit` / `wallpaper-recall` / `wallpaper-return`（设置窗口专用），`debug-wallpaper*`（测试）；托盘「壁纸」子菜单；重启后 3 秒恢复 |
 | `src/main/wallpaper-preload.js` · `src/renderer/wallpaper/*`（新） | 壁纸页面：Pixi 按 z 画图层（drift + loop 横向循环、phases 淡入淡出、blend、opacity）、时段调色、灯光与萤火虫；她用 `game-pet` + `game-world` 在 `pet.area` 里走动、用 `pet.spots`，帧取自她的角色包（与小游戏同一套切帧）；`ticker.maxFPS` 由主进程定，0 时 `ticker.stop()`；CSP `default-src 'none'`，图片只来自 `game://` |
 | `src/main/main.js` | `showPet()` 先叫她出来；小游戏 `onOpen` / `onClosed` 交给 host（关掉小游戏回到壁纸）；托盘重建；启动恢复；`before-quit` 先 detach 再退出；壁纸包更新 / 删除时重载 / 退出 |
@@ -506,7 +506,52 @@ desktop ──设为壁纸──▶ wallpaper ──叫她出来──▶ out �
 
 ### 7.4 真机未验证（需要 §6.2 的真机矩阵）
 
-- **Windows 全部**：helper exe 还没编译（这台机器没有 MSVC / mingw），`helper.json` 的 sha256 是 `null`，所以当前构建在 Windows 上点「设为壁纸」会得到 `helper-missing`。需要：在 `release.yml` 加 windows-latest 编译 + 写 sha256 + `extraResources`，然后跑 W1–W8（Win10 22H2 / Win11 23H2 / 24H2 的 attach、Explorer 重启、双屏 DPI、睡眠唤醒、全屏遮挡、Defender / VirusTotal）。
+- **Windows 挂载行为全部**：helper exe 已能构建、打包、校验（§7.5，T-13662），但只在 wine 里跑过自检和协议，**没有在真机 Windows 10 / 11 上运行过**。attach 到 WorkerW、Explorer 重启、双屏 DPI、睡眠唤醒、全屏遮挡、Defender / VirusTotal 都要按 §7.6 的清单（W1–W8 的展开）在真机上跑。
 - **macOS 全部**：`type: 'desktop'` 在 Finder 图标下面、Spaces / Mission Control / Stage Manager、JXA 读层级、NSWorkspace 设 / 恢复桌面图片（M1–M3）。
 - **Linux 桌面环境**：GNOME（DING）/ Xfce / KDE 下两个 DESKTOP 窗口的先后（L1–L2）；Wayland 静态壁纸的真实 `gsettings` / `plasma-apply-wallpaperimage`（L3，单测只验了命令）；多显示器（Xvfb 造不出第二个 RandR 输出，单测覆盖 reconcile）。
 - 本机已验证的是 Linux X11（Xvfb + openbox）的动态壁纸全链路。
+
+### 7.5 Windows 助手的构建、打包与校验（T-13662）
+
+**构建**（可复现）：
+
+```bash
+sudo apt-get install gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64   # Ubuntu 24.04：GCC 13-win32，binutils 2.41.90
+npm run build:win-helper     # → build/win-helper/pixelpet-desktop-helper.exe，并改写 src/main/wallpaper/helper.json
+npm run check:win-helper -- --wine    # PE 结构、导入表、sha256、wine 下的 --version / --self-test / 协议
+```
+
+- `scripts/build-win-helper.js`：先 `windres` 编译 `desktop-helper.rc`（版本资源 + 清单），再 `x86_64-w64-mingw32-gcc -std=c11 -O2 -Wall -Wextra -Werror -mconsole -static -s`，链接 `-Wl,--no-insert-timestamp -Wl,--build-id=none`（PE 时间戳为 0、没有 build id）、`--dynamicbase --nxcompat --high-entropy-va`，源码路径用相对路径加 `-ffile-prefix-map`。同一个 mingw-w64 包在任何目录下编出的字节相同，所以仓库里提交的 `helper.json` 的 sha256 可以复算对比（CI 不同时只给 warning，用新编的那份）。
+- `helper.json`：`{ file, sha256, size, sources, sourceSha256, compiler }`。`sourceSha256` 是 `.c` / `.rc` / `.manifest` 的哈希（换行统一成 LF）；单测检查它与当前源码一致，改了源码忘了重编就会失败。
+- `predist:win` 跑 `build-win-helper.js --ensure`：exe 已在且与 `helper.json`、源码都对得上就保留（CI 的 Windows job 用 Linux 上编出的那个），否则重编；没有编译器也没有对得上的 exe 就让 `dist:win` 失败，不会再打出 sha256 为 `null` 的包。
+- 打包：`build.win.extraResources` 把 exe 放到 `resources/pixelpet-desktop-helper.exe`（不进 asar：asar 里的 exe 不能直接 spawn）；`helper.json` 随 `src/**` 进 `app.asar`；`desktop-helper.*` 源码不进包（`!src/main/wallpaper/helper/**`）。`main.js` 打包后从 `process.resourcesPath` 取 exe，源码运行时从 `build/win-helper/` 取。
+- CI：`release.yml` 新增 `win-helper` job（ubuntu-24.04：装 mingw-w64 + wine → `build:win-helper` → `check-win-helper.js --wine` → 上传 exe 与 `helper.json`），`build-win` 依赖它、下载后跑 `dist:win`，打完再跑 `check-win-helper.js --package dist/win-unpacked`。`test.yml` 的 `win-helper` job 在每个 PR 上编译并在 wine 里自检。
+- 校验脚本 `scripts/check-win-helper.js` 自己解析 PE（不依赖 objdump，Windows runner 上也能跑）：PE32+、AMD64、CUI 子系统、ASLR / NX、时间戳 0；导入表必须有 `SendMessageTimeoutW` `SetParent` `FindWindowExW` `FindWindowW` `EnumWindows` `SetWindowPos` `SetWindowLongPtrW` 等，不能有钩子 / 注入 / 网络 API，也不能依赖 libgcc 之类需要另带的 DLL；清单是 `asInvoker` + `PerMonitorV2`，版本资源写着「Pixel Pet 桌面壁纸助手」。`--package` 检查 `resources/` 里的 exe 与 `app.asar` 里 `helper.json` 的 sha256 一致、asar 里没有 exe、`resources/` 里没有另一份 `helper.json`；`--installer` 用 7-Zip 从 NSIS 安装包里取出 exe 再比一次。
+- 单测 `test/wallpaper-win-helper.test.js`：sha256 对得上才 spawn；改一个字节 → `helper-tampered`、不 spawn，「设为壁纸」返回同一原因；`resources/` 里放一份配套的假 `helper.json` 也没用（期望值只从代码里来）；exe 不在 / sha256 为空或格式不对 → `helper-missing`；运行中 exe 被换掉、helper 崩溃后自动重启时再校验一次，拒绝启动并进入 `dead`；`helper.json` 与源码一致；打包配置。把 `win-helper.js` 里的比对删掉，前两条和重启那条会失败（反向对照）。
+
+**wine 能验证的和不能验证的**：wine 里 `--version`、`--self-test`（请求解析、`bad-request` / `bad-hwnd` 应答、64 位、能注册 `TaskbarCreated`）、JSON lines 协议（由应用自己的 `HelperClient` 经 sha256 校验后启动）、stdin 关闭后退出码 0，都已跑通。wine 没有 Progman / WorkerW（自检里 `progman:false`），所以 attach 到桌面层、遮挡、会话事件在 wine 里验证不了，只能在真机上看（§7.6）。
+
+### 7.6 Windows 真机验证清单（未验证）
+
+**以下各项均未在真机上跑过。** 每项都要在对应系统的真机（不是虚拟机里的 wine）上跑，记录结果和证据后才能算验证通过。证据放 `out/e2e/wallpaper/win/<编号>/`：录屏带章节，helper 输出从 `debug-wallpaper` 读（`helper().events` 与 `status`）。
+
+准备（每台机器一次）：
+
+1. 安装 CI 构建的 `PixelPetAffection-<版本>-win-x64-setup.exe`（未签名：SmartScreen 选「仍要运行」）。预期：装完后 `%LOCALAPPDATA%\Programs\pixel-pet-affection\resources\pixelpet-desktop-helper.exe` 存在，PowerShell `Get-FileHash -Algorithm SHA256` 的值等于发布说明 / CI 日志里 `helper.json` 的 sha256。
+2. 在 PowerShell 里直接运行 `pixelpet-desktop-helper.exe --self-test`。预期：一行 `{"selfTest":true,…,"parser":true,"parserErrors":0,"progman":true,…}`，退出码 0；Win10 / Win11 23H2 上 `legacyWorkerW` 可能为 `false`（WorkerW 要等发送 0x052C 后才出现），24H2 上 `progmanChildWorkerW` 可能为 `true`。
+3. 文件属性 → 详细信息。预期：文件说明「Pixel Pet 桌面壁纸助手 (desktop wallpaper helper)」、产品名「Pixel Pet Affection」、版本 1.0.0。
+4. 商店里下载一个壁纸包（`wallpaper@1`）。
+
+| 编号 | 系统 | 步骤 | 预期 |
+| --- | --- | --- | --- |
+| W1 | Win10 22H2 | 商店 → 壁纸 → 「设为壁纸」→ 确认。看桌面；点、框选、右键桌面图标；打开一个普通窗口；`Win+D`；新建虚拟桌面并切换 | 她和壁纸画面出现在桌面图标**下面**、所有普通窗口下面；图标能点能框选，右键菜单正常；`Win+D` 后壁纸仍在；每个虚拟桌面都能看到；`status` 为 `attached:true, parentAlive:true`，`layout:"legacy"` |
+| W2 | Win11 23H2 | 同 W1 | 同 W1（`layout:"legacy"`） |
+| W3 | Win11 24H2 / 25H2 | 同 W1；另外在「设置 → 个性化 → 背景」里换一次系统壁纸 | 同 W1，`layout:"24h2"`；换系统壁纸后她仍在图标下面，或看门狗 30 s 内重新挂上 |
+| W4 | Win10 与 Win11 各一台 | 壁纸模式下 `taskkill /f /im explorer.exe`，然后 `start explorer` | helper 发出 `{"event":"shell-restarted"}`；30 s 内她回到新的 WorkerW 里；重试用尽时退回桌面，并弹出 §3.6 的提示 |
+| W5 | Win11 双屏，150 % + 100 % | 「所有显示器」铺满；拔掉一块屏再插回；改分辨率 | 每块屏都铺满、不错位、没有黑边；拔屏后她挪到主屏；`display-changed` 事件触发重新 `place` |
+| W6 | Win11 笔记本 | 睡眠后唤醒（`rundll32 powrprof.dll,SetSuspendState 0,1,0`）；`Win+L` 锁屏再解锁；拔掉电源 | 唤醒后继续动；锁屏时 `session locked:true`、帧率 0，解锁后恢复；用电池时 10 fps |
+| W7 | Win11 | 全屏玩游戏 / 看视频；PPT 放映；最大化一个窗口 | `occluded on:true`（`d3d` / `presentation` / `fullscreen` / `maximized`），帧率 0；退出后 `on:false`，恢复动画；任务管理器里 GPU / CPU 接近 0 |
+| W8 | Win11，Defender 开启 | `"%ProgramFiles%\Windows Defender\MpCmdRun.exe" -Scan -ScanType 3 -File <resources>\pixelpet-desktop-helper.exe`；上传 VirusTotal | 无检出；有检出时到 WDSI 提交误报申诉，并在发布说明里写明 |
+| W9 | 任一台 | 退出壁纸；再「设为壁纸」后直接退出应用（托盘 → 退出） | 退出后系统壁纸重新画出，没有残留最后一帧；退出应用时 helper 进程随之结束（任务管理器里没有残留 `pixelpet-desktop-helper.exe`） |
+| W10 | 任一台 | 把 `resources\pixelpet-desktop-helper.exe` 换成别的 exe（或改一个字节），再点「设为壁纸」 | 不启动该文件；按钮提示原因 `helper-tampered`；删掉文件时为 `helper-missing` |
+

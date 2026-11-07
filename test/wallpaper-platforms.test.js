@@ -254,14 +254,13 @@ test('Windows: Explorer restarting arrives as shell-restarted; occlusion events 
 test('Windows: no helper in this build → helper-missing; a replaced exe (sha256 differs from helper.json) → helper-tampered, never started', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hdir-'));
   assert.deepEqual(await createWinBackend({ helperDir: dir }).availability(), { ok: false, mode: 'live', reason: 'helper-missing' });
-  fs.writeFileSync(path.join(dir, 'pixelpet-desktop-helper.exe'), 'MZ the real one');
-  fs.writeFileSync(path.join(dir, 'helper.json'), JSON.stringify({ file: 'pixelpet-desktop-helper.exe', sha256: crypto.createHash('sha256').update('MZ the real one').digest('hex') }));
+  const manifest = { file: 'pixelpet-desktop-helper.exe', sha256: crypto.createHash('sha256').update('MZ the real one').digest('hex') };
   fs.writeFileSync(path.join(dir, 'pixelpet-desktop-helper.exe'), 'MZ something else');
   let spawned = false;
-  const b = createWinBackend({ helperDir: dir, spawn: () => { spawned = true; throw new Error('must not run'); } });
+  const b = createWinBackend({ helperDir: dir, manifest, spawn: () => { spawned = true; throw new Error('must not run'); } });
   assert.deepEqual(await b.availability(), { ok: false, mode: 'live', reason: 'helper-tampered' });
   assert.equal(spawned, false);
-  // the shipped helper.json: no sha256 until CI builds the exe → helper-missing, not an unchecked start
+  // the shipped helper.json (stamped by scripts/build-win-helper.js; test/wallpaper-win-helper.test.js checks it)
   const shipped = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'wallpaper', 'helper.json'), 'utf8'));
   assert.equal(shipped.file, 'pixelpet-desktop-helper.exe');
 });
